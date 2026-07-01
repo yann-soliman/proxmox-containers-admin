@@ -59,11 +59,19 @@ Prefer this sequence:
 ### Run shell commands inside a guest
 - `lxc-shell <vmid> -- <command>`
   - purpose: run a shell command inside an LXC for diagnosis or administration
-  - underlying command: `pct exec <vmid> -- sh -lc "<command>"`
+  - underlying command: `pct exec <vmid> -- sh -c "<command>"`
 
 - `vm-shell <vmid> -- <command>`
   - purpose: run a shell command inside a VM when guest-agent execution is available
-  - underlying command: `qm guest exec <vmid> -- sh -lc "<command>"`
+  - underlying command: `qm guest exec <vmid> -- sh -c "<command>"`
+
+- `lxc-shell-stdin <vmid>`
+  - purpose: run a multi-line shell script inside an LXC through SSH stdin
+  - underlying command: `pct exec <vmid> -- sh -s`
+
+- `vm-shell-stdin <vmid>`
+  - purpose: run a multi-line shell script inside a VM through SSH stdin when guest-agent execution is available
+  - underlying command: `qm guest exec <vmid> -- sh -s`
 
 ### Transfer files with an LXC
 - `lxc-pull <vmid> <guest-path>`
@@ -113,6 +121,16 @@ Use when the guest is reachable and you need system-level inspection.
 - `ssh "$PROXMOX_SSH_USER@$PROXMOX_HOST" "lxc-shell 117 -- journalctl -u patchmon-agent -n 200 --no-pager | tail -20"`
 - `ssh "$PROXMOX_SSH_USER@$PROXMOX_HOST" "vm-shell 201 -- uname -a"`
 
+For multi-line inspection scripts:
+
+```bash
+ssh "$PROXMOX_SSH_USER@$PROXMOX_HOST" "lxc-shell-stdin 117" <<'EOF'
+set -eu
+hostname
+df -h
+EOF
+```
+
 ### Transfer a file with an LXC
 Use when a file is too large or too structured to handle comfortably through shell output.
 - `ssh "$PROXMOX_SSH_USER@$PROXMOX_HOST" "lxc-pull 117 /etc/app/config.yaml" > config.yaml`
@@ -126,7 +144,8 @@ Keep these rules in mind when using the wrapper:
 - use one SSH call per wrapper action
 - do not chain multiple wrapper actions in the same SSH command
 - keep `lxc-shell` and `vm-shell` for simple commands
-- prefer a temporary script inside the guest for long or multi-step operations
+- prefer `lxc-shell-stdin` and `vm-shell-stdin` for long or multi-step operations
+- keep a temporary guest-side script as a fallback when stdin alone is not enough
 - do not use `ssh -n` when sending file content to `lxc-push`, or stdin will be empty
 
 ## Practical rule

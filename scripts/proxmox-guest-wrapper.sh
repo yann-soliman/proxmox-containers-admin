@@ -18,6 +18,17 @@ require_vmid() {
   [[ "${1:-}" =~ ^[0-9]+$ ]] || fail "invalid vmid"
 }
 
+parse_vmid_only() {
+  local prefix="$1"
+  local usage="$2"
+  local rest
+  rest=${cmd#${prefix} }
+  [[ "$rest" != "$cmd" ]] || fail "$usage"
+  [[ "$rest" =~ ^[0-9]+$ ]] || fail "$usage"
+  require_vmid "$rest"
+  PARSED_VMID="$rest"
+}
+
 parse_vmid_and_double_dash_tail() {
   local prefix="$1"
   local rest vmid tail
@@ -105,13 +116,25 @@ case "$cmd" in
   lxc-shell\ *)
     parse_vmid_and_double_dash_tail "lxc-shell"
     log "allow: $cmd"
-    exec /usr/sbin/pct exec "$PARSED_VMID" -- sh -lc "$PARSED_TAIL"
+    exec /usr/sbin/pct exec "$PARSED_VMID" -- sh -c "$PARSED_TAIL"
     ;;
 
   vm-shell\ *)
     parse_vmid_and_double_dash_tail "vm-shell"
     log "allow: $cmd"
-    exec /usr/sbin/qm guest exec "$PARSED_VMID" -- sh -lc "$PARSED_TAIL"
+    exec /usr/sbin/qm guest exec "$PARSED_VMID" -- sh -c "$PARSED_TAIL"
+    ;;
+
+  lxc-shell-stdin\ *)
+    parse_vmid_only "lxc-shell-stdin" "usage: lxc-shell-stdin <vmid>"
+    log "allow: $cmd"
+    exec /usr/sbin/pct exec "$PARSED_VMID" -- sh -s
+    ;;
+
+  vm-shell-stdin\ *)
+    parse_vmid_only "vm-shell-stdin" "usage: vm-shell-stdin <vmid>"
+    log "allow: $cmd"
+    exec /usr/sbin/qm guest exec "$PARSED_VMID" -- sh -s
     ;;
 
   lxc-pull\ *)

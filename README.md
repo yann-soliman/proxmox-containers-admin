@@ -72,8 +72,10 @@ Le modèle de sécurité est :
 - `vm-config <vmid>` -> `qm config <vmid>`
 
 ### Exécution dans le guest
-- `lxc-shell <vmid> -- <commande>` -> `pct exec <vmid> -- sh -lc "<commande>"`
-- `vm-shell <vmid> -- <commande>` -> `qm guest exec <vmid> -- sh -lc "<commande>"`
+- `lxc-shell <vmid> -- <commande>` -> `pct exec <vmid> -- sh -c "<commande>"`
+- `vm-shell <vmid> -- <commande>` -> `qm guest exec <vmid> -- sh -c "<commande>"`
+- `lxc-shell-stdin <vmid>` -> `pct exec <vmid> -- sh -s`
+- `vm-shell-stdin <vmid>` -> `qm guest exec <vmid> -- sh -s`
 
 ### Transfert de fichiers LXC
 - `lxc-pull <vmid> <guest-path>` -> `pct pull <vmid> <guest-path> <tempfile>`
@@ -98,18 +100,30 @@ ssh "$PROXMOX_SSH_USER@$PROXMOX_HOST" "lxc-push 117 /etc/app/config.yaml" < conf
 
 Les chemins guest avec espaces sont acceptés pour `lxc-pull` et `lxc-push`.
 
+Pour les opérations multi-lignes ou plus complexes, utiliser les variantes `*-stdin` :
+
+```bash
+ssh "$PROXMOX_SSH_USER@$PROXMOX_HOST" "lxc-shell-stdin 117" <<'EOF'
+set -eu
+hostname
+df -h
+systemctl status nginx --no-pager
+EOF
+```
+
 ## Limites connues
 
 Le wrapper est volontairement simple. Il y a quelques points à connaître :
 - il ne parse **qu’une seule action wrapper** par connexion SSH ;
 - si on chaîne plusieurs actions wrapper dans une seule commande SSH, seule la première passe par `SSH_ORIGINAL_COMMAND` ;
 - les suivantes sont alors exécutées dans le shell du guest et échouent typiquement avec `sh: 1: lxc-shell: not found` ;
-- pour les opérations multi-étapes, il est souvent plus fiable de pousser un script temporaire dans le guest plutôt que d’empiler des one-liners complexes.
+- les variantes `lxc-shell-stdin` et `vm-shell-stdin` rendent les scripts multi-lignes plus fiables, mais restent limitées à **une seule** action wrapper par connexion SSH.
 
 En pratique :
 - utiliser **un appel SSH par action wrapper** ;
-- garder `lxc-shell` pour les commandes simples ;
-- préférer un script temporaire pour les opérations longues ou multi-lignes.
+- garder `lxc-shell` et `vm-shell` pour les commandes simples ;
+- préférer `lxc-shell-stdin` ou `vm-shell-stdin` pour les opérations longues ou multi-lignes ;
+- garder le push d’un script temporaire comme solution de repli quand il faut aussi transférer des fichiers.
 
 ## Installation côté Proxmox
 
