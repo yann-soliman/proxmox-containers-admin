@@ -1,0 +1,10 @@
+# Local scratch files
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/

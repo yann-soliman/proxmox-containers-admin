@@ -1,0 +1,5 @@
+Defaults:proxmox-agent !requiretty
+Defaults:proxmox-agent env_keep += "SSH_ORIGINAL_COMMAND"
+Defaults!/usr/local/sbin/proxmox-guest-wrapper secure_path=/usr/sbin:/usr/bin:/sbin:/bin
+
+proxmox-agent ALL=(root) NOPASSWD: /usr/local/sbin/proxmox-guest-wrapper
