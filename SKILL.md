@@ -64,6 +64,7 @@ Prefer this sequence:
 - `vm-shell <vmid> -- <command>`
   - purpose: run a shell command inside a VM when guest-agent execution is available
   - underlying command: `qm guest exec <vmid> -- sh -c "<command>"`
+  - the wrapper parses the JSON `exitcode` field and propagates the guest process status to SSH
 
 - `lxc-shell-stdin <vmid>`
   - purpose: run a multi-line shell script inside an LXC through SSH stdin
@@ -72,6 +73,7 @@ Prefer this sequence:
 - `vm-shell-stdin <vmid>`
   - purpose: run a multi-line shell script inside a VM through SSH stdin when guest-agent execution is available
   - underlying command: `qm guest exec <vmid> --pass-stdin 1 -- sh -s`
+  - the wrapper parses the JSON `exitcode` field and propagates the guest process status to SSH
   - verify a concrete guest-side effect; older deployed wrappers without `--pass-stdin 1` can return success without executing stdin
 
 ### Transfer files with an LXC

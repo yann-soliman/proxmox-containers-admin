@@ -70,6 +70,27 @@ cleanup() {
 }
 trap cleanup EXIT
 
+run_qm_guest_exec() {
+  local output qm_exitcode guest_exitcode
+
+  if output=$(/usr/sbin/qm guest exec "$@"); then
+    qm_exitcode=0
+  else
+    qm_exitcode=$?
+  fi
+
+  printf '%s\n' "$output"
+  (( qm_exitcode == 0 )) || return "$qm_exitcode"
+
+  if [[ "$output" =~ \"exitcode\"[[:space:]]*:[[:space:]]*([0-9]+) ]]; then
+    guest_exitcode=${BASH_REMATCH[1]}
+    (( guest_exitcode <= 255 )) || fail "guest exit code out of range: $guest_exitcode"
+    return "$guest_exitcode"
+  fi
+
+  fail "qm guest exec response did not contain an exit code"
+}
+
 case "$cmd" in
   list-lxc)
     log "allow: $cmd"
@@ -122,7 +143,7 @@ case "$cmd" in
   vm-shell\ *)
     parse_vmid_and_double_dash_tail "vm-shell"
     log "allow: $cmd"
-    exec /usr/sbin/qm guest exec "$PARSED_VMID" -- sh -c "$PARSED_TAIL"
+    run_qm_guest_exec "$PARSED_VMID" -- sh -c "$PARSED_TAIL"
     ;;
 
   lxc-shell-stdin\ *)
@@ -134,7 +155,7 @@ case "$cmd" in
   vm-shell-stdin\ *)
     parse_vmid_only "vm-shell-stdin" "usage: vm-shell-stdin <vmid>"
     log "allow: $cmd"
-    exec /usr/sbin/qm guest exec "$PARSED_VMID" --pass-stdin 1 -- sh -s
+    run_qm_guest_exec "$PARSED_VMID" --pass-stdin 1 -- sh -s
     ;;
 
   lxc-pull\ *)

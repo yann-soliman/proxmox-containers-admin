@@ -118,6 +118,7 @@ Le wrapper est volontairement simple. Il y a quelques points à connaître :
 - si on chaîne plusieurs actions wrapper dans une seule commande SSH, seule la première passe par `SSH_ORIGINAL_COMMAND` ;
 - les suivantes sont alors exécutées dans le shell du guest et échouent typiquement avec `sh: 1: lxc-shell: not found` ;
 - `vm-shell-stdin` nécessite une version de `qm guest exec` supportant `--pass-stdin 1` ; sans cette option, la commande peut retourner un succès sans exécuter le script reçu ;
+- le wrapper extrait le champ JSON `exitcode` renvoyé par `qm guest exec` afin de propager l’échec du processus invité au client SSH ;
 - toujours vérifier un effet concret côté VM après une exécution par stdin.
 
 En pratique :
