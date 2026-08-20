@@ -75,7 +75,7 @@ Le modèle de sécurité est :
 - `lxc-shell <vmid> -- <commande>` -> `pct exec <vmid> -- sh -c "<commande>"`
 - `vm-shell <vmid> -- <commande>` -> `qm guest exec <vmid> -- sh -c "<commande>"`
 - `lxc-shell-stdin <vmid>` -> `pct exec <vmid> -- sh -s`
-- `vm-shell-stdin <vmid>` -> `qm guest exec <vmid> -- sh -s`
+- `vm-shell-stdin <vmid>` -> `qm guest exec <vmid> --pass-stdin 1 -- sh -s`
 
 ### Transfert de fichiers LXC
 - `lxc-pull <vmid> <guest-path>` -> `pct pull <vmid> <guest-path> <tempfile>`
@@ -117,7 +117,8 @@ Le wrapper est volontairement simple. Il y a quelques points à connaître :
 - il ne parse **qu’une seule action wrapper** par connexion SSH ;
 - si on chaîne plusieurs actions wrapper dans une seule commande SSH, seule la première passe par `SSH_ORIGINAL_COMMAND` ;
 - les suivantes sont alors exécutées dans le shell du guest et échouent typiquement avec `sh: 1: lxc-shell: not found` ;
-- les variantes `lxc-shell-stdin` et `vm-shell-stdin` rendent les scripts multi-lignes plus fiables, mais restent limitées à **une seule** action wrapper par connexion SSH.
+- `vm-shell-stdin` nécessite une version de `qm guest exec` supportant `--pass-stdin 1` ; sans cette option, la commande peut retourner un succès sans exécuter le script reçu ;
+- toujours vérifier un effet concret côté VM après une exécution par stdin.
 
 En pratique :
 - utiliser **un appel SSH par action wrapper** ;

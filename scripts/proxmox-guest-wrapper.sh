@@ -134,7 +134,7 @@ case "$cmd" in
   vm-shell-stdin\ *)
     parse_vmid_only "vm-shell-stdin" "usage: vm-shell-stdin <vmid>"
     log "allow: $cmd"
-    exec /usr/sbin/qm guest exec "$PARSED_VMID" -- sh -s
+    exec /usr/sbin/qm guest exec "$PARSED_VMID" --pass-stdin 1 -- sh -s
     ;;
 
   lxc-pull\ *)

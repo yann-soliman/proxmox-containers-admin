@@ -71,7 +71,8 @@ Prefer this sequence:
 
 - `vm-shell-stdin <vmid>`
   - purpose: run a multi-line shell script inside a VM through SSH stdin when guest-agent execution is available
-  - underlying command: `qm guest exec <vmid> -- sh -s`
+  - underlying command: `qm guest exec <vmid> --pass-stdin 1 -- sh -s`
+  - verify a concrete guest-side effect; older deployed wrappers without `--pass-stdin 1` can return success without executing stdin
 
 ### Transfer files with an LXC
 - `lxc-pull <vmid> <guest-path>`
@@ -145,6 +146,7 @@ Keep these rules in mind when using the wrapper:
 - do not chain multiple wrapper actions in the same SSH command
 - keep `lxc-shell` and `vm-shell` for simple commands
 - prefer `lxc-shell-stdin` and `vm-shell-stdin` for long or multi-step operations
+- after `vm-shell-stdin`, verify a concrete guest-side effect instead of trusting only the wrapper exit code
 - keep a temporary guest-side script as a fallback when stdin alone is not enough
 - do not use `ssh -n` when sending file content to `lxc-push`, or stdin will be empty
 
