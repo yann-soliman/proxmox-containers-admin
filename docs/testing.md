@@ -13,12 +13,19 @@ Traefik, SSH production, password vault or service configuration is contacted.
     .venv/bin/shellcheck scripts/install-host-access.sh scripts/uninstall-host-access.sh
     .venv/bin/shellcheck -e SC2086,SC2295 scripts/proxmox-guest-wrapper.sh
     .venv/bin/python -m ruff check host_access tests
-    .venv/bin/python -m pytest -q --junitxml=.venv/test-results.xml
+    install -d -m 0700 "$HOME/.proxmox-host-access-tests"
+    TMPDIR="$HOME/.proxmox-host-access-tests" .venv/bin/python -m pytest -q --junitxml=.venv/test-results.xml
     .venv/bin/python -m build --wheel --no-isolation
 
 If ensurepip is unavailable, ask the operator for venv support or use the pip
 bootstrap exclusively inside `.venv` (do not install globally). Build artifacts,
 venv, credentials, certificate keys and runtime state are ignored by Git.
+
+Tests intentionally enforce ownership and non-writable ancestors for their private
+state, just like production. Use a private directory below your non-shared home;
+the default world-writable `/tmp` ancestry is deliberately rejected. Do not weaken
+the production permission checks to make tests run. No root privileges are needed
+for these ordinary checks; real root/systemd acceptance is separate.
 
 The two ShellCheck exclusions apply only to the unchanged upstream guest parser
 and reproduce its existing SC2086/SC2295 baseline (splitting/pattern expansion).
@@ -29,7 +36,7 @@ with SO_PEERCRED, actual local supervised process groups (explicit test injectio
 real HTTPS with a temporary certificate and verified TLS trust, and a local HTTP
 Gotify-compatible receiver. Credentials are random/ephemeral and not intentionally
 printed; test fixtures redact their representation. HTTP/S redirects, CSRF, Host,
-Origin, Secure cookies, malicious reason escaping, session-only approval rejection,
+Origin, Secure cookies, malicious reason escaping, missing/expired session rejection,
 nonce replay/expiry, rate budgets, peer rejection, immutable mapping, permission
 checks, race/revocation/expiry, stdin/stdout/stderr/exit status, binary output,
 output overflow, directory bounds, closed safe catalogue and native local dispatch

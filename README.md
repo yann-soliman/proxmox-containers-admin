@@ -55,7 +55,8 @@ Vérifications locales (pas de production) :
 python3 -m venv .venv
 .venv/bin/python -m pip install setuptools==84.0.0 wheel==0.48.0
 .venv/bin/python -m pip install --no-build-isolation -c requirements.lock -e '.[test]'
-.venv/bin/python -m pytest -q
+install -d -m 0700 "$HOME/.proxmox-host-access-tests"
+TMPDIR="$HOME/.proxmox-host-access-tests" .venv/bin/python -m pytest -q
 .venv/bin/python -m ruff check host_access tests
 bash -n scripts/proxmox-guest-wrapper.sh scripts/install-host-access.sh scripts/uninstall-host-access.sh
 .venv/bin/python -m build --wheel --no-isolation
