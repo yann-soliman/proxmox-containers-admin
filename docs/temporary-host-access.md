@@ -75,6 +75,20 @@ Use a reviewed trusted checkout, not an agent-writable directory, for root insta
    (`id -u proxmox-agent`) and web UID (`id -u proxmox-host-access`). Config must be
    root:proxmox-host-access 0640, directory root:proxmox-host-access 0750. No private
    domains or credentials belong in the repository. Agent/web UIDs must differ.
+   On a fresh installation only (never overwrite existing operator configuration):
+
+   ```bash
+   sudo test ! -e /etc/proxmox-host-access/config.toml && \
+     sudo install -o root -g proxmox-host-access -m 0640 \
+       /etc/proxmox-host-access/config.toml.example /etc/proxmox-host-access/config.toml
+   id -u proxmox-agent
+   id -u proxmox-host-access
+   sudoedit /etc/proxmox-host-access/config.toml
+   ```
+
+   Replace `agent_uid`, verify `web_uid` against the installed service account,
+   and set your own `origin`. The installer already substitutes the local web UID
+   in the installed example: do not search/replace a hardcoded placeholder UID.
 4. Configure reviewed local diagnostic resources by short alias, not client paths.
    Leave `log_services=[]`, `audit_enabled=false` and `enable_script=false` initially.
 5. Optional Gotify: supply an HTTPS base URL and a root-only 0600 token file via
@@ -97,6 +111,19 @@ Use a reviewed trusted checkout, not an agent-writable directory, for root insta
    or a local TLS tunnel. Do not disable TLS verification for a TLS backend.
 8. Explicitly start: `sudo systemctl start proxmox-host-access-broker.service proxmox-host-access-web.service`.
    Enable on boot only after live acceptance: `sudo systemctl enable proxmox-host-access-broker.service proxmox-host-access-web.service`.
+
+Before starting, check imports and configuration under the actual web account:
+
+```bash
+sudo runuser -u proxmox-host-access -- /opt/proxmox-host-access/venv/bin/python -I -c \
+  'import flask, waitress, argon2; from host_access.config import load; load(); print("Imports/configuration OK")'
+```
+
+Then verify HTTPS login, a denied host command without approval, a SAFE request,
+notification receipt (when enabled), manual approval, a benign diagnostic and
+revocation. Opening a link must never grant access. Enable boot only after this
+end-to-end acceptance. The repository does not install a reverse proxy or firewall
+rules: those remain operator-specific prerequisites, especially for a remote proxy.
 
 No live deployment is implicit in tests or staging. For offline layout validation:
 `bash scripts/install-host-access.sh --stage /absolute/empty/staging-directory`.
@@ -212,7 +239,8 @@ active in the file: startup invalidates it and monotonic deadlines are memory-on
 - Root-only 0600 token file for optional Gotify (`gotify_token_file`); never CLI/URL.
 - `umask 077`; config `0640`, dir `0750`, state `0700`; module files `0640` (root:web).
 - Bootstrap: stops both broker+web, `getpass` twice, writes Argon2id (`password.hash`, 0600 root-only).
-- No agent web access; agent uses SSH wrapper + `SUDO_UID` check only.
+- No operator session/password is given to the agent; its request/execution channel
+  remains the SSH wrapper with trusted numeric sudo identity.
 - UI: `/` dashboard (authenticated) with 15-min broker session; one login password; approval uses request nonce/CSRF + session; no second password.
 - Default loopback `bind=127.0.0.1`/`port=8787`; remote proxy needs exact IP + firewall.
 - Services installed but NOT auto-enabled/started; start explicitly: `systemctl start ...`; enable only after live acceptance.
@@ -221,9 +249,23 @@ active in the file: startup invalidates it and monotonic deadlines are memory-on
 
 ## Version / update considerations
 
-- Dependency updates use locked `requirements.lock`; install uses `--no-build-isolation` with `setuptools==84.0.0 wheel==0.48.0`. Offline: pre-build wheels.
+- Dependency updates use `requirements.lock` as pinned constraints; install uses
+  `--no-build-isolation` with explicit setuptools/wheel versions. The file pins
+  versions but is not a hash-verified supply-chain lock. Review dependency updates.
+- Normal installation needs package-index connectivity. For offline use, prepare
+  and verify a complete wheelhouse (including setuptools, wheel and transitive
+  runtime dependencies) for the target Python version/platform in advance; pass
+  `PIP_NO_INDEX=1` and `PIP_FIND_LINKS=/absolute/wheelhouse` to the installer through
+  `sudo env`. Missing wheels must fail installation, not trigger online fallback.
+- Before update, retain the previous reviewed checkout and a root-only backup of
+  configuration, password hash and state outside Git. Uninstall stops/disables
+  the two services and retains these files. Install the new reviewed checkout,
+  compare configuration changes, validate imports and restart explicitly.
+  Do not bootstrap a new password just to update. For rollback, uninstall the
+  new version and reinstall the previous reviewed checkout; never restore an
+  active lease or stale browser session. Re-enable boot after acceptance.
 - Password bootstrap stops both services; restart explicitly after change.
-- No agent auth via web; agent access remains SSH-only with numeric sudo identity.
+- Agent authority uses SSH and trusted numeric sudo identity, not the human web session.
 - Web requires `web_uid`; broker requires root; sockets use `SO_PEERCRED`.
 - CSRF, exact `Origin`, `Secure/HttpOnly/SameSite=Strict`, `no-store`, CSP/HSTS enforced; `GET` never grants/revokes.
 

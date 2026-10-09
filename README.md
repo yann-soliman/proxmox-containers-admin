@@ -33,6 +33,18 @@ invités restent inchangées. Installation sans démarrage automatique, venv dé
 bootstrap opérateur via getpass, désinstallation préservant le wrapper existant.
 FULL n’est pas un confinement de root : root peut contourner la supervision.
 
+### Installation pour un nouvel utilisateur
+
+- Le wrapper LXC/VM reste utilisable seul ; l’extension hôte est entièrement optionnelle.
+- Prérequis : Python >=3.11 avec venv/pip, systemd, compte SSH agent dédié et proxy HTTPS de confiance.
+- Installer depuis un checkout relu sur PVE, créer la configuration avec les UID locaux et l’origine HTTPS propre au déploiement, puis initialiser le mot de passe localement.
+- Gotify est facultatif ; ses secrets restent sur PVE, hors Git et hors accès de l’agent.
+- Le backend écoute en loopback par défaut. Un proxy distant exige une restriction réseau à son IP exacte.
+- Aucun service n’est démarré ou activé automatiquement. L’opérateur valide le parcours avant d’activer le démarrage au boot.
+- La désinstallation conserve le wrapper, le compte, la configuration et les secrets ; la mise à jour exige une sauvegarde et une réinstallation contrôlée.
+
+Le [guide d’installation](docs/temporary-host-access.md#installation-operator-on-the-destination-pve-not-run-by-an-agent) fournit les commandes, permissions, vérifications et limites ; il ne suppose aucun domaine, UID ou secret du homelab de l’auteur.
+
 - [Installation, protocole et catalogue](docs/temporary-host-access.md)
 - [Modèle de menace et limites](docs/security.md)
 - [Tests automatisés et acceptation réelle séparée](docs/testing.md)

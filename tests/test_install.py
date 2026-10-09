@@ -148,3 +148,52 @@ def test_operator_password_bootstrap_uses_no_cli_password():
     assert 'getpass.getpass' in source
     assert 'password=' not in source
     assert 'SUDO_UID' not in source
+
+
+def test_staged_install_secure_defaults(tmp_path):
+    import tomllib
+    stage = tmp_path/'stage'
+    result = subprocess.run(['bash', str(ROOT/'scripts/install-host-access.sh'), '--stage', str(stage)], capture_output=True)
+    assert result.returncode == 0, result.stderr.decode()
+    config = tomllib.loads((stage/'etc/proxmox-host-access/config.toml.example').read_text())
+    assert config['bind'] == config['trusted_proxy'] == '127.0.0.1'
+    assert config['port'] == 8787
+    assert config['gotify_url'] == config['gotify_token_file'] == ''
+    assert config['origin'] == 'https://approve.example.org'
+    assert config['agent_uid'] != config['web_uid']
+    assert config['default_duration'] == 900 and config['maximum_duration'] == 1800
+    assert not (stage/'etc/proxmox-host-access/config.toml').exists()
+    assert not (stage/'etc/proxmox-host-access/password.hash').exists()
+    assert not (stage/'etc/systemd/system/multi-user.target.wants').exists()
+
+
+def test_staged_uninstall_retains_operator_data(tmp_path):
+    from host_access import install as installer
+    installer.install(tmp_path, False)
+    retained = {
+        'etc/proxmox-host-access/password.hash': b'protected hash fixture',
+        'etc/proxmox-host-access/config.toml': b'operator configuration fixture',
+        'var/lib/proxmox-host-access/state.json': b'{"records":{}}',
+        'usr/local/sbin/proxmox-guest-wrapper': b'guest wrapper unchanged',
+    }
+    for name, data in retained.items():
+        path = tmp_path/name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    installer.uninstall(tmp_path, False)
+    assert not (tmp_path/'opt/proxmox-host-access').exists()
+    assert not (tmp_path/'usr/local/libexec/proxmox-host-access-agent').exists()
+    for name, data in retained.items():
+        assert (tmp_path/name).read_bytes() == data
+
+
+def test_live_install_cli_refuses_nonroot_before_changes(tmp_path, monkeypatch):
+    import pytest
+    from host_access import install as installer
+    operations = []
+    monkeypatch.setattr(installer.os, 'geteuid', lambda: 1000)
+    monkeypatch.setattr(installer.sys, 'argv', ['install', 'install'])
+    monkeypatch.setattr(installer, 'install', lambda *args: operations.append(args))
+    with pytest.raises(SystemExit) as exc:
+        installer.main()
+    assert exc.value.code == 2 and operations == []
