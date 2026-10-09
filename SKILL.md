@@ -152,6 +152,34 @@ Keep these rules in mind when using the wrapper:
 - keep a temporary guest-side script as a fallback when stdin alone is not enough
 - do not use `ssh -n` when sending file content to `lxc-push`, or stdin will be empty
 
+## Temporary host access (optional extension)
+
+Permanent guest capabilities remain separate. Use host actions only when the
+operator installed the extension and approved a concrete host task.
+
+1. Request `host-access-request safe|full [seconds] -- concrete reason` (default
+   900 seconds; maximum 1800). Prefer SAFE for diagnosis.
+2. Read `host-access-status [id]`; wait for actual `active` state. A sent Gotify
+   notification, URL, login session or request creation is NOT authorization.
+3. Never approve, recover, collect or access the operator password/vault. Human
+   approval requires an authenticated 15-minute session and explicit request-bound
+   confirmation on the independent HTTPS UI, without a second password entry.
+4. SAFE: `host-safe action [key=value ...]` from the documented closed catalogue.
+   No arbitrary paths, executable argv, shell or scripts. FULL includes SAFE but
+   requires its own explicit approval; never escalate or renew automatically.
+5. FULL: `host-exec -- command`; buffered payload stdin via
+   `host-exec --stdin -- command`; optional `host-script-stdin` is disabled by default.
+   Avoid secrets in commands/reasons. Respect input/output/runtime bounds.
+6. Work only within the approved reason. Revoke with `host-access-revoke id` when
+   finished and read back terminal state. Expiry/revoke interrupts tracked processes
+   but does not undo mutations; root may escape supervision.
+7. On unavailable broker/auth/notification/HTTPS, remain closed. Do not bypass the
+   wrapper or modify approval infrastructure from an agent-administered guest.
+
+Read `docs/temporary-host-access.md` and `docs/security.md` for the policy and limits.
+Keep all production deployment, password bootstrap, DNS/proxy/vault changes and
+real mobile acceptance under operator control.
+
 ## Practical rule
 
 For homelab administration, think in terms of:

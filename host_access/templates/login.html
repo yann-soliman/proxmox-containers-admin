@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Connexion{% endblock %}
+{% block content %}
+<section class="login-layout">
+  <div class="login-context"><p class="eyebrow">Espace approbateur</p><h1>Accès temporaire <br>à l’hôte.</h1><p class="lede">Examinez les demandes et autorisez uniquement l’accès nécessaire.</p><div class="security-note"><span class="status-dot" aria-hidden="true"></span><p>Un mot de passe pour entrer.<br>Une nouvelle confirmation pour chaque approbation.</p></div><p class="muted">Les notifications ouvrent une demande, jamais un accès.</p></div>
+  <section class="panel login-panel" aria-labelledby="login-title"><p class="eyebrow">Connexion sécurisée</p><h2 id="login-title">Se connecter</h2><p>Compte approbateur dédié. La session est vérifiée par le service d’autorisation.</p>
+    {% if stale %}<div class="notice" role="alert">Votre session a expiré ou n’est plus valide. Connectez-vous à nouveau.</div>{% endif %}
+    <form method="post" action="/login{% if rid %}?request={{ rid }}{% endif %}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="password">Mot de passe opérateur</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024" aria-describedby="password-help">
+      <p id="password-help" class="field-help">Il ne sera ni affiché ni conservé dans cette page.</p>
+      <button class="button primary wide">Se connecter <span aria-hidden="true">→</span></button>
+    </form>
+    <p class="fine">La connexion seule n’autorise aucune opération.</p>
+  </section>
+</section>
+{% endblock %}

@@ -1,1 +1,3 @@
+# Optional host access keeps this same forced command: no SSH approval route.
+# Keep wrapper/launcher/config root-owned; use a dedicated agent UID distinct from web.
 command="sudo /usr/local/sbin/proxmox-guest-wrapper",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA_REPLACE_WITH_YOUR_PUBLIC_KEY proxmox-agent

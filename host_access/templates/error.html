@@ -1,0 +1,3 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}<section class="panel error-panel" role="alert"><p class="eyebrow">Console opérateur · {{ code }}</p><h1>{{ title }}</h1><p class="lede">{{ message }}</p><div class="error-actions"><a class="button primary" href="/">Retour à la console</a><a class="button quiet" href="/login">Connexion</a></div><p class="fine">Ne transmettez jamais votre mot de passe dans une URL ou un message.</p></section>{% endblock %}

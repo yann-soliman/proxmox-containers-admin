@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% from 'components.html' import badges, details, expiry, warning %}
+{% block title %}Demande · {{ states[r.state] }}{% endblock %}
+{% block content %}
+<div class="section-heading"><div><a class="text-link" href="/">← Retour à la console</a><p class="eyebrow">Operate / Approbation</p><h1>{{ 'Examiner la demande' if r.state == 'pending' else 'Détail de l’accès' }}</h1></div><a class="button quiet" href="/request/{{ r.id }}">Actualiser l’état</a></div>
+<div class="operate-grid approval-grid">
+  <section class="panel request-panel"><div class="panel-heading"><h2>Accès demandé</h2>{{ badges(r) }}</div>{{ details(r) }}{{ expiry(r) }}{{ warning(r) }}<dl class="metadata"><dt>Identifiant</dt><dd class="mono">{{ r.id }}</dd><dt>Notification transmise au serveur</dt><dd>{{ 'Oui' if r.notified else 'Non' }} · ne vaut pas approbation</dd></dl></section>
+  <section class="panel decision-panel" aria-labelledby="decision-title">
+    {% if r.state == 'pending' %}
+    <p class="eyebrow">Décision opérateur</p><h2 id="decision-title">Autoriser cet accès ?</h2><p>Vérifiez le motif, le mode et la durée. Votre session authentifiée permet de confirmer cette demande sans ressaisir le mot de passe.</p>
+    <form method="post" action="/request/{{ r.id }}/approve">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="challenge" value="{{ challenge }}">
+      <p class="field-help">Session limitée à 15 minutes. Si la confirmation expire, actualisez la demande.</p>
+      <button class="button {{ 'full-action' if r.mode == 'full' else 'primary' }} wide">Autoriser {{ r.mode|upper }} — {{ r.duration|minutes }}</button>
+    </form>
+    <form method="post" action="/request/{{ r.id }}/deny"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="button quiet wide">Refuser la demande</button></form>
+    <p class="fine">La demande peut expirer. Sa validité est contrôlée côté serveur ; aucun accès n’est accordé par le simple affichage de cette page.</p>
+    {% elif r.state == 'active' %}<p class="eyebrow">Décision opérateur</p><h2 id="decision-title">L’accès est actif</h2><p>Vous pouvez l’arrêter immédiatement. Il ne sera pas prolongé par cette page.</p>
+    {% else %}<p class="eyebrow">Demande terminée</p><h2 id="decision-title">{{ states[r.state] }}</h2><p>Aucune approbation possible dans cet état. Un nouvel accès nécessite une nouvelle demande et une nouvelle confirmation.</p><a class="button quiet wide" href="/">Retour à la console</a>{% endif %}
+    {% if r.state in ['pending', 'active'] %}<div class="revoke"><form method="post" action="/request/{{ r.id }}/revoke"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="button danger wide">Révoquer immédiatement</button></form><p class="fine">Arrête l’autorisation, sans annuler les modifications déjà faites.</p></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

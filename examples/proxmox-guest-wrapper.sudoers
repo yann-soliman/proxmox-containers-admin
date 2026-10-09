@@ -1,3 +1,7 @@
+# Optional host access still uses ONLY this root-owned wrapper.
+# The installed launcher checks sudo-generated SUDO_UID against root-owned config.
+# Do not add sudo rules for python, broker, operator, shell or the web account.
+# Never preserve HOST_ACCESS_*, PYTHONPATH or client-supplied identity variables.
 Defaults:proxmox-agent !requiretty
 Defaults:proxmox-agent env_keep += "SSH_ORIGINAL_COMMAND"
 Defaults!/usr/local/sbin/proxmox-guest-wrapper secure_path=/usr/sbin:/usr/bin:/sbin:/bin

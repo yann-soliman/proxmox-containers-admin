@@ -1,0 +1,29 @@
+name: tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m venv .venv
+      - run: .venv/bin/python -m pip install setuptools==84.0.0 wheel==0.48.0
+      - run: .venv/bin/python -m pip install --no-build-isolation -c requirements.lock -e '.[test]'
+      - run: bash -n scripts/proxmox-guest-wrapper.sh scripts/install-host-access.sh scripts/uninstall-host-access.sh
+      - run: .venv/bin/shellcheck scripts/install-host-access.sh scripts/uninstall-host-access.sh
+      # Existing upstream guest parser intentionally retains its old splitting/pattern behavior.
+      - run: .venv/bin/shellcheck -e SC2086,SC2295 scripts/proxmox-guest-wrapper.sh
+      - run: .venv/bin/python -m ruff check host_access tests
+      - run: .venv/bin/python -m pytest -q --junitxml=.venv/test-results.xml
+      - run: .venv/bin/python -m build --wheel --no-isolation
+      # The explicit root/systemd acceptance test is skipped in ordinary CI.
+      # CI uses only ephemeral local Unix/HTTPS/HTTP servers; no real PVE/Gotify.

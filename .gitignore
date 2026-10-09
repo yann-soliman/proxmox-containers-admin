@@ -8,3 +8,22 @@
 .DS_Store
 .idea/
 .vscode/
+
+# Optional host-access extension: never version credentials/runtime artifacts.
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+*.hash
+*.token
+*.db
+*.db-*
+state.json
+*.jsonl
+*.jsonl.*
+*.pem
+config.toml

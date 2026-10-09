@@ -1,0 +1,40 @@
+# Copy manually to /etc/proxmox-host-access/config.toml, root:proxmox-host-access 0640.
+# Resolve numeric UIDs on the destination; these example values are placeholders.
+origin = "https://approve.example.org"
+agent_uid = 1001
+web_uid = 1002
+agent = "proxmox-agent"
+target = "pve-node"
+state_dir = "/var/lib/proxmox-host-access"
+socket_dir = "/run/proxmox-host-access"
+password_file = "/etc/proxmox-host-access/password.hash"
+default_duration = 900
+maximum_duration = 1800
+pending_ttl = 300
+execution_timeout = 300
+max_output = 1048576
+max_input = 65536
+# Absolute stdin reception deadline (seconds, 1..30); never renewed per chunk.
+stdin_timeout = 10
+enable_script = false
+# Optional best-effort metadata only; commands/reasons/stdio/passwords never audited.
+audit_enabled = false
+bind = "127.0.0.1"
+# If the TLS proxy is remote, set its exact IP, a LAN bind IP, and firewall the port.
+trusted_proxy = "127.0.0.1"
+port = 8787
+services = ["pveproxy.service", "pvedaemon.service"]
+# Logs can contain credentials: enable per service only after review.
+log_services = []
+# Notifications optional. No tokens or credentials in URL.
+gotify_url = ""
+gotify_token_file = ""
+
+[filesystems]
+# root = "/"
+[directories]
+# logs = "/var/log"
+[storage_paths]
+# local = "/var/lib/vz"
+[devices]
+# disk0 = "/dev/sda"

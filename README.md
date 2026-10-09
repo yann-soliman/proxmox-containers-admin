@@ -16,7 +16,42 @@ L’objectif est de pouvoir faire des opérations d’admin courantes sur des gu
 - transférer un fichier vers ou depuis un LXC ;
 - effectuer des actions d’alimentation seulement si on le souhaite explicitement.
 
-Le tout sans donner un shell libre sur le nœud Proxmox.
+Le tout sans donner un shell libre sur le nœud Proxmox par défaut.
+
+## Extension optionnelle : accès temporaire à l’hôte
+
+Une extension Python/systemd ajoute deux modes approuvés par mot de passe :
+SAFE (catalogue fermé de 22 diagnostics) et FULL (shell root volontairement accordé).
+Durée par défaut 15 minutes, maximum 30 minutes ; mot de passe à la connexion,
+puis approbation explicite sans seconde saisie dans une session de 15 minutes.
+Gotify ne transporte qu’un lien non autorisant. Une session volée peut autoriser.
+Interface HTTPS sur PVE sous compte non root, broker privilégié local et sockets
+Unix avec SO_PEERCRED. Aucune dépendance WebAuthn/TOTP, aucun signup/reset public.
+
+Sans installation explicite, les commandes hôte sont refusées et les commandes
+invités restent inchangées. Installation sans démarrage automatique, venv dédié,
+bootstrap opérateur via getpass, désinstallation préservant le wrapper existant.
+FULL n’est pas un confinement de root : root peut contourner la supervision.
+
+- [Installation, protocole et catalogue](docs/temporary-host-access.md)
+- [Modèle de menace et limites](docs/security.md)
+- [Tests automatisés et acceptation réelle séparée](docs/testing.md)
+
+Vérifications locales (pas de production) :
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install setuptools==84.0.0 wheel==0.48.0
+.venv/bin/python -m pip install --no-build-isolation -c requirements.lock -e '.[test]'
+.venv/bin/python -m pytest -q
+.venv/bin/python -m ruff check host_access tests
+bash -n scripts/proxmox-guest-wrapper.sh scripts/install-host-access.sh scripts/uninstall-host-access.sh
+.venv/bin/python -m build --wheel --no-isolation
+```
+
+L’E2E local utilise de vrais sockets Unix et HTTPS, un backend d’exécution injecté
+pour les tests et un récepteur Gotify local. Il ne valide pas le téléphone, Gotify
+réel, PVE, Traefik, ni les cgroups systemd de production.
 
 ## Ce qui est publié dans ce dépôt
 

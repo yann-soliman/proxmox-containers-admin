@@ -1,0 +1,30 @@
+[Unit]
+Description=Temporary Proxmox host access nonroot approval UI
+Requires=proxmox-host-access-broker.service
+After=proxmox-host-access-broker.service
+
+[Service]
+Type=simple
+User=proxmox-host-access
+Group=proxmox-host-access
+UMask=0077
+ExecStart=/opt/proxmox-host-access/venv/bin/python -I -m host_access.web
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/etc/proxmox-host-access
+InaccessiblePaths=-/etc/proxmox-host-access/password.hash -/etc/proxmox-host-access/gotify.token /var/lib/proxmox-host-access
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target
