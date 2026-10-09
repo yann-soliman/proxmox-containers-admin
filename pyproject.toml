@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools==84.0.0", "wheel==0.48.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "proxmox-temporary-host-access"
+version = "0.1.0"
+description = "Optional password-approved temporary host access for proxmox-containers-admin"
+requires-python = ">=3.11"
+dependencies = ["argon2-cffi==25.1.0", "Flask==3.1.3", "waitress==3.0.2"]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1", "ruff==0.15.6", "build==1.4.0", "shellcheck-py==0.11.0.1"]
+
+[tool.setuptools.packages.find]
+include = ["host_access*"]
+
+[tool.setuptools.package-data]
+host_access = ["templates/*.html", "static/*.css", "static/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E9", "F"]

@@ -91,6 +91,18 @@ run_qm_guest_exec() {
   fail "qm guest exec response did not contain an exit code"
 }
 
+# Host commands never pass through the legacy command logger: scripts may
+# contain secrets. Optional extension is a fixed, root-installed launcher.
+case "$cmd" in
+  host-*)
+    if [[ -x /usr/local/libexec/proxmox-host-access-agent ]]; then
+      exec /usr/local/libexec/proxmox-host-access-agent
+    fi
+    printf '%s\n' 'ERROR: host access extension unavailable' >&2
+    exit 1
+    ;;
+esac
+
 case "$cmd" in
   list-lxc)
     log "allow: $cmd"

@@ -1,0 +1,25 @@
+[Unit]
+Description=Temporary Proxmox host access privileged broker
+After=local-fs.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0077
+RuntimeDirectory=proxmox-host-access
+RuntimeDirectoryMode=0750
+StateDirectory=proxmox-host-access
+StateDirectoryMode=0700
+ExecStart=/opt/proxmox-host-access/venv/bin/python -I -m host_access.broker
+ExecStopPost=/opt/proxmox-host-access/venv/bin/python -I -m host_access.operator cleanup
+Restart=on-failure
+RestartSec=2
+KillMode=control-group
+TimeoutStopSec=15
+# Broker intentionally has root/systemd authority. Do not misrepresent this as confinement.
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target
