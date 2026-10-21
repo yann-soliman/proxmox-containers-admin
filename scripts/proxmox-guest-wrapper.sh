@@ -70,6 +70,38 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Keep large transfer copies off RAM-backed /tmp and inside root-only storage.
+transfer_temp() {
+  local base="/var/lib/proxmox-guest-wrapper" directory
+  for directory in "$base" "$base/tmp"; do
+    [[ ! -L "$directory" ]] || fail "unsafe transfer directory"
+    if [[ ! -e "$directory" ]]; then
+      mkdir -m 700 -- "$directory"
+    fi
+    [[ -d "$directory" && "$(stat -c '%u:%a' -- "$directory")" == "0:700" ]] || fail "transfer directory must be private and root-owned"
+  done
+  case "$(stat -f -c '%T' -- "$base/tmp")" in
+    tmpfs|ramfs) fail "transfer staging must be disk-backed" ;;
+  esac
+  mktemp "$base/tmp/proxmox-guest-wrapper.$1.XXXXXX"
+}
+
+run_transfer() {
+  local output status
+  # PVE may print transfer errors but still return zero. These commands are
+  # silent on success; fail closed on diagnostics instead of returning bad data.
+  if output=$(/usr/sbin/pct "$@" 2>&1); then
+    if [[ -n "$output" ]]; then
+      printf '%s\n' "$output" >&2
+      return 1
+    fi
+  else
+    status=$?
+    [[ -z "$output" ]] || printf '%s\n' "$output" >&2
+    return "$status"
+  fi
+}
+
 run_qm_guest_exec() {
   local output qm_exitcode guest_exitcode
 
@@ -172,18 +204,18 @@ case "$cmd" in
 
   lxc-pull\ *)
     parse_vmid_and_path "lxc-pull" "usage: lxc-pull <vmid> <guest-path>"
-    tmpfile=$(mktemp /tmp/proxmox-guest-wrapper.pull.XXXXXX)
+    tmpfile=$(transfer_temp pull)
     log "allow: $cmd"
-    /usr/sbin/pct pull "$PARSED_VMID" "$PARSED_TAIL" "$tmpfile" >/dev/null
-    exec cat -- "$tmpfile"
+    run_transfer pull "$PARSED_VMID" "$PARSED_TAIL" "$tmpfile"
+    cat -- "$tmpfile"
     ;;
 
   lxc-push\ *)
     parse_vmid_and_path "lxc-push" "usage: lxc-push <vmid> <guest-path>"
-    tmpfile=$(mktemp /tmp/proxmox-guest-wrapper.push.XXXXXX)
+    tmpfile=$(transfer_temp push)
     cat > "$tmpfile"
     log "allow: $cmd"
-    exec /usr/sbin/pct push "$PARSED_VMID" "$tmpfile" "$PARSED_TAIL"
+    run_transfer push "$PARSED_VMID" "$tmpfile" "$PARSED_TAIL"
     ;;
 
   vm-agent-ping\ *)

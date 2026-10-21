@@ -12,41 +12,47 @@ ROOT = Path(__file__).resolve().parents[1]
 def wrapper(tmp_path):
     native = tmp_path/'native'
     native.write_text('''#!/usr/bin/env python3
-import json,sys
+import json,os,sys
 from pathlib import Path
 args=sys.argv[1:]
 if args[0]=='pull':
     Path(args[3]).write_bytes(b'guest-fixture-data')
 elif args[0]=='push':
-    print(json.dumps({'vmid':args[1],'path':args[3],'data':Path(args[2]).read_bytes().decode()}))
+    Path(os.environ['NATIVE_CAPTURE']).write_text(json.dumps({'vmid':args[1],'path':args[3],'data':Path(args[2]).read_bytes().decode()}))
 else:
     print(json.dumps({'argv':args,'stdin':sys.stdin.read(),'exitcode':7}))
 ''')
     native.chmod(0o700)
     source = (ROOT/'scripts/proxmox-guest-wrapper.sh').read_text()
     source = source.replace('/usr/sbin/pct',str(native)).replace('/usr/sbin/qm',str(native))
-    source = source.replace('/tmp/proxmox-guest-wrapper',str(tmp_path/'proxmox-guest-wrapper'))
+    # Model pct's silent successful transfers; inspect delivery out-of-band.
+    staging = tmp_path/'transfer-state'
+    staging.mkdir(mode=0o700)
+    source = source.replace('/var/lib/proxmox-guest-wrapper',str(staging)).replace('0:700',str(os.getuid())+':700')
     p = tmp_path/'wrapper'
     p.write_text(source)
+    capture = tmp_path/'native-transfer.json'
     def run(command,data=b''):
-        return subprocess.run(['bash',str(p)],env={**os.environ,'SSH_ORIGINAL_COMMAND':command},
+        return subprocess.run(['bash',str(p)],env={**os.environ,'SSH_ORIGINAL_COMMAND':command,'NATIVE_CAPTURE':str(capture)},
                               input=data,capture_output=True)
-    return run
+    return run, capture
 
 
 def test_guest_pull_and_push_spaces_unchanged(wrapper):
-    result = wrapper('lxc-pull 101 /guest/path with spaces')
+    run, capture = wrapper
+    result = run('lxc-pull 101 /guest/path with spaces')
     assert result.returncode == 0 and result.stdout == b'guest-fixture-data'
-    result = wrapper('lxc-push 101 /guest/path with spaces',b'input-data')
+    result = run('lxc-push 101 /guest/path with spaces',b'input-data')
     assert result.returncode == 0
-    assert json.loads(result.stdout) == {'vmid':'101','path':'/guest/path with spaces','data':'input-data'}
+    assert json.loads(capture.read_text()) == {'vmid':'101','path':'/guest/path with spaces','data':'input-data'}
 
 
 def test_vm_script_stdin_and_guest_nonzero_propagated(wrapper):
-    result = wrapper('vm-shell-stdin 101',b'printf script')
+    run, _ = wrapper
+    result = run('vm-shell-stdin 101',b'printf script')
     assert result.returncode == 7
     payload = json.loads(result.stdout)
     assert payload['stdin'] == 'printf script'
     assert payload['argv'] == ['guest','exec','101','--pass-stdin','1','--','sh','-s']
-    result = wrapper('vm-shell 101 -- exit 7')
+    result = run('vm-shell 101 -- exit 7')
     assert result.returncode == 7
