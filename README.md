@@ -245,7 +245,8 @@ Pourquoi ce wrapper est raisonnablement sûr :
 - il n’utilise pas `eval` sur `SSH_ORIGINAL_COMMAND` ;
 - il n’ouvre pas de shell libre sur l’hôte ;
 - il n’expose qu’un jeu d’actions borné ;
-- les transferts LXC utilisent un fichier temporaire interne au wrapper, supprimé automatiquement ;
+- les transferts LXC utilisent `/var/lib/proxmox-guest-wrapper/tmp`, un répertoire privé `root:root` en mode `0700` sur disque (les systèmes de fichiers `tmpfs`/`ramfs` sont refusés), avec suppression du temporaire à la sortie normale ou en erreur ;
+- les transferts restent dans le shell pour exécuter le nettoyage `EXIT` ; les diagnostics de `pct` sont traités comme des erreurs même lorsque celui-ci retourne zéro ;
 - l’environnement `SSH_ORIGINAL_COMMAND` est explicitement conservé via `sudoers`.
 
 Ce qu’il faut garder en tête :
