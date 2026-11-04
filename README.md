@@ -48,6 +48,12 @@ Le [guide d’installation](docs/temporary-host-access.md#installation-operator-
 - [Installation, protocole et catalogue](docs/temporary-host-access.md)
 - [Modèle de menace et limites](docs/security.md)
 - [Tests automatisés et acceptation réelle séparée](docs/testing.md)
+- [Recettes de provisioning des guests](docs/guest-provisioning.md) (provisioning LXC Debian non privilégié, clone VM cloud-init, montage partagé en lecture seule)
+
+Suivi des tâches Proxmox (UPID) :
+
+- [Suivi de tâches et attente via `scripts/proxmox-task-wait.py`](scripts/proxmox-task-wait.py)
+- [Procédure et codes de sortie du suivi de tâches](docs/task-tracking.md) — attente bornée, sans relance automatique
 
 Vérifications locales (pas de production) :
 

@@ -5,7 +5,9 @@ description: Administer a Proxmox homelab through a restricted SSH wrapper that 
 
 # Proxmox homelab administration via SSH wrapper
 
-Use the wrapper commands, not raw `pct`/`qm` commands.
+Use the wrapper commands, not direct host SSH or raw `pct`/`qm` commands.
+The only exception is raw host commands carried **inside** the optional,
+human-approved FULL `host-exec` action; this never bypasses the wrapper.
 
 ## Goal
 
@@ -179,6 +181,17 @@ operator installed the extension and approved a concrete host task.
 Read `docs/temporary-host-access.md` and `docs/security.md` for the policy and limits.
 Keep all production deployment, password bootstrap, DNS/proxy/vault changes and
 real mobile acceptance under operator control.
+
+## Guest provisioning recipes
+
+For concrete provisioning recipes (unprivileged LXC Debian, VM cloud-init clone, shared-media bind mount), read `docs/guest-provisioning.md`.
+
+The wrapper intentionally exposes no create commands. Raw `pvesh`, `qm`, and `pct` provisioning commands run only through an approved FULL `host-exec` action via the existing host access flow.
+
+For asynchronous operations, read `docs/task-tracking.md` and use the local
+standard-library helper `scripts/proxmox-task-wait.py`. Retain the exact UPID;
+wait for the final exit status and read back the target resource. Timeout/access
+failure means unknown outcome, not permission to resubmit or renew a lease.
 
 ## Practical rule
 
