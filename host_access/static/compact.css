@@ -1,0 +1,33 @@
+.compact-operator .shell { max-width: 760px; }
+.compact-operator .topbar { min-height: 64px; }
+.compact-operator .topbar form { margin-inline-start: auto; }
+.compact-operator main { min-height: 0; padding: 16px 0 24px; }
+.compact-card { max-width: 520px; margin-inline: auto; padding: clamp(14px, 4vw, 28px); }
+.compact-card h1 { font-size: clamp(1.35rem, 4vw, 1.9rem); margin: 0 0 12px; }
+.compact-card form + form, .compact-card input + button { margin-top: 8px; }
+.compact-card .button { min-height: 44px; }
+.compact-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
+.compact-title h1 { margin: 0; }
+.compact-title .badges { margin: 0; }
+.compact-scope { margin: 8px 0 2px; overflow-wrap: anywhere; }
+.compact-risk { color: var(--muted); margin: 0; font-size: .88rem; }
+.compact-risk.root-risk { color: var(--amber); }
+.compact-reason {
+  border-block: 1px solid var(--line);
+  max-height: 7em;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  margin: 10px 0 12px;
+  padding: 8px 0;
+}
+.compact-more { margin-top: 14px; color: var(--muted); font-size: .875rem; }
+.compact-more summary { cursor: pointer; padding-block: 8px; }
+.compact-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.compact-card #passkey-status { color: var(--muted); margin: 6px 0; font-size: .875rem; }
+.compact-card #passkey-status:empty { display: none; }
+@media (max-width: 640px) {
+  .compact-operator .shell { padding-inline: 12px; }
+  .compact-operator .topbar { min-height: 58px; }
+  .compact-operator .topbar .brand small { display: none; }
+}

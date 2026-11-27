@@ -93,8 +93,12 @@ def test_restrictive_umask_real_runtime(tmp_path, monkeypatch):
         elif 'pip' in command and str(ROOT) == command[-1]:
             site = next((base/'venv/lib').glob('python*/site-packages'))
             # Copy locally installed real runtime distributions, with restrictive modes.
-            for name in ['Flask', 'Werkzeug', 'Jinja2', 'MarkupSafe', 'itsdangerous', 'click',
-                         'blinker', 'argon2-cffi', 'argon2-cffi-bindings', 'cffi', 'pycparser', 'waitress']:
+            runtime = ['Flask', 'Werkzeug', 'Jinja2', 'MarkupSafe', 'itsdangerous', 'click',
+                       'blinker', 'argon2-cffi', 'argon2-cffi-bindings', 'cffi', 'pycparser', 'waitress',
+                       'webauthn', 'cbor2', 'cryptography', 'pyOpenSSL', 'pyasn1', 'pyasn1-modules']
+            if sys.version_info < (3, 13):  # pyOpenSSL's dependency marker
+                runtime.append('typing-extensions')
+            for name in runtime:
                 dist = importlib.metadata.distribution(name)
                 for entry in dist.files:
                     if '..' in entry.parts:
@@ -139,7 +143,7 @@ def test_restrictive_umask_real_runtime(tmp_path, monkeypatch):
     assert (tmp_path/'etc/proxmox-host-access').stat().st_mode & 0o777 == 0o750
     assert (tmp_path/'etc/proxmox-host-access/config.toml.example').stat().st_mode & 0o777 == 0o640
     result = subprocess.run([str(base/'venv/bin/python'), '-I', '-c',
-                             'import flask, argon2, waitress, host_access.web'], capture_output=True)
+                             'import flask, argon2, waitress, host_access.web, host_access.passkeys'], capture_output=True)
     assert result.returncode == 0, result.stderr.decode()
 
 

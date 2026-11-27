@@ -9,6 +9,7 @@ from argon2.exceptions import VerificationError, InvalidHashError
 from .leases import AccessError
 
 HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4, type=Type.ID)
+PASSKEY_SESSION_TTL = 1800
 
 
 class Auth:
@@ -44,15 +45,19 @@ class Auth:
 
     def login(self, password):
         self.verify(password)
+        return self.new_session()
+
+    def new_session(self, *, passkey=False):
         self.sessions = {k: v for k, v in self.sessions.items() if v['until'] > self.clock()}
         if len(self.sessions) >= 32:
             raise AccessError('session quota reached')
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-        self.sessions[token] = dict(csrf=csrf, until=self.clock() + 900, challenge=None)
+        ttl = PASSKEY_SESSION_TTL if passkey else 900
+        self.sessions[token] = dict(csrf=csrf, until=self.clock() + ttl, challenge=None, passkey=passkey)
         return token, csrf
 
     def session(self, token):
-        s = self.sessions.get(token)
+        s = self.sessions.get(token) if isinstance(token, str) else None
         if not s or self.clock() >= s['until']:
             raise AccessError('authentication required')
         return s
@@ -68,11 +73,12 @@ class Auth:
         s['challenge'] = (nonce, rid, self.clock() + 120)
         return nonce
 
-    def confirm(self, token, csrf, nonce, rid, password=None):
-        # Approval uses the bounded authenticated session, not a second login.
-        # Ignore the optional legacy argument; new web clients never send it.
+    def confirm(self, token, csrf, nonce, rid, password=None, *, consume=True):
+        # Legacy password arguments do not confer authority.
         self.check_csrf(token, csrf)
         s = self.session(token)
-        challenge, s['challenge'] = s['challenge'], None
+        challenge = s['challenge']
+        if consume:
+            s['challenge'] = None
         if not challenge or challenge[1] != rid or self.clock() >= challenge[2] or not isinstance(nonce, str) or not secrets.compare_digest(challenge[0], nonce):
             raise AccessError('confirmation expired or mismatched')

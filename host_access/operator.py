@@ -1,4 +1,4 @@
-"""Operator-only password bootstrap/recovery; secrets exclusively via getpass."""
+"""Operator-only credential bootstrap/recovery; never take secrets in arguments."""
 import getpass
 import os
 import sys
@@ -10,12 +10,12 @@ from .executor import SystemdBackend
 
 def main():
     if os.geteuid() != 0 or len(sys.argv) != 2:
-        raise SystemExit('operator command requires root: bootstrap | change-password | cleanup')
+        raise SystemExit('operator command requires root: bootstrap | change-password | enroll-passkey | cleanup')
     action = sys.argv[1]
     if action == 'cleanup':
         SystemdBackend().cleanup()
         return
-    if action not in {'bootstrap', 'change-password'}:
+    if action not in {'bootstrap', 'change-password', 'enroll-passkey'}:
         raise SystemExit('unknown operator action')
     c = load()
     try:
@@ -23,6 +23,15 @@ def main():
         os.close(tty)
     except OSError:
         raise SystemExit('interactive operator terminal required; no echoed stdin fallback') from None
+    if action == 'enroll-passkey':
+        if c.auth_mode == 'password':
+            raise SystemExit('enable migration mode before enrolling a passkey')
+        from .passkeys import issue_enrollment_code
+        code = issue_enrollment_code(Path(c.state_dir))
+        # Print to the human console, never to systemd/journald or a pipe.
+        with open('/dev/tty', 'w') as tty:
+            print(f'Open {c.origin}/passkeys/enroll and enter within 5 minutes: {code}', file=tty)
+        return
     p = Path(c.password_file)
     protected(p.parent, directory=True)
     if action == 'bootstrap' and (p.exists() or p.is_symlink()):

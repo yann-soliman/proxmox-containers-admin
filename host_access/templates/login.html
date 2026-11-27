@@ -1,18 +1,32 @@
 {% extends 'base.html' %}
 {% block title %}Connexion{% endblock %}
+{% block page_class %}compact-operator{% endblock %}
+{% block head %}
+{% if passkey_available %}
+  <meta name="passkey-csrf" content="{{ csrf }}">
+  <script src="{{ url_for('static', filename='passkey.js') }}" defer></script>
+{% endif %}
+{% endblock %}
+{% block footer %}{% endblock %}
 {% block content %}
-<section class="login-layout">
-  <div class="login-context"><p class="eyebrow">Espace approbateur</p><h1>Accès temporaire <br>à l’hôte.</h1><p class="lede">Examinez les demandes et autorisez uniquement l’accès nécessaire.</p><div class="security-note"><span class="status-dot" aria-hidden="true"></span><p>Un mot de passe pour entrer.<br>Une nouvelle confirmation pour chaque approbation.</p></div><p class="muted">Les notifications ouvrent une demande, jamais un accès.</p></div>
-  <section class="panel login-panel" aria-labelledby="login-title"><p class="eyebrow">Connexion sécurisée</p><h2 id="login-title">Se connecter</h2><p>Compte approbateur dédié. La session est vérifiée par le service d’autorisation.</p>
-    {% if stale %}<div class="notice" role="alert">Votre session a expiré ou n’est plus valide. Connectez-vous à nouveau.</div>{% endif %}
+<section class="panel compact-card" aria-labelledby="login-title">
+  <h1 id="login-title">Se connecter</h1>
+  {% if stale %}<p class="notice" role="alert">Session expirée. Reconnectez-vous.</p>{% endif %}
+  {% if passkey_available %}
+    <button type="button" class="button primary wide" data-passkey-login data-request="{{ rid }}">Utiliser une clé d’accès</button>
+    <p id="passkey-status" role="status"></p>
+  {% elif auth_mode == 'passkey' %}
+    <p class="notice" role="alert">Aucune clé disponible. Utilisez la console PVE pour récupérer l’accès.</p>
+  {% endif %}
+  {% if auth_mode != 'passkey' %}
+    {% if passkey_available %}<details class="compact-more"><summary>Utiliser le mot de passe</summary>{% endif %}
     <form method="post" action="/login{% if rid %}?request={{ rid }}{% endif %}">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <label for="password">Mot de passe opérateur</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024" aria-describedby="password-help">
-      <p id="password-help" class="field-help">Il ne sera ni affiché ni conservé dans cette page.</p>
-      <button class="button primary wide">Se connecter <span aria-hidden="true">→</span></button>
+      <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024">
+      <button type="submit" class="button primary wide">Se connecter</button>
     </form>
-    <p class="fine">La connexion seule n’autorise aucune opération.</p>
-  </section>
+    {% if passkey_available %}</details>{% endif %}
+  {% endif %}
 </section>
 {% endblock %}
