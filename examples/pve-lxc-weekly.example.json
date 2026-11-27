@@ -1,0 +1,6 @@
+{
+  "exclude": [],
+  "apps": {},
+  "patchmon_report": false,
+  "state_dir": "/var/log/pve-lxc-weekly"
+}

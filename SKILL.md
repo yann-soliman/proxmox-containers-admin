@@ -9,6 +9,10 @@ Use the wrapper commands, not direct host SSH or raw `pct`/`qm` commands.
 The only exception is raw host commands carried **inside** the optional,
 human-approved FULL `host-exec` action; this never bypasses the wrapper.
 
+For an operator-managed local maintenance job, see
+[weekly LXC maintenance](docs/lxc-weekly-maintenance.md). That optional tool
+does not extend the agent's host permissions or install a schedule by itself.
+
 ## Goal
 
 Use this skill to operate the homelab through the wrapper:
