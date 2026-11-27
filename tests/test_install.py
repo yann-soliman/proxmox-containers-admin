@@ -93,10 +93,12 @@ def test_restrictive_umask_real_runtime(tmp_path, monkeypatch):
         elif 'pip' in command and str(ROOT) == command[-1]:
             site = next((base/'venv/lib').glob('python*/site-packages'))
             # Copy locally installed real runtime distributions, with restrictive modes.
-            for name in ['Flask', 'Werkzeug', 'Jinja2', 'MarkupSafe', 'itsdangerous', 'click',
-                         'blinker', 'argon2-cffi', 'argon2-cffi-bindings', 'cffi', 'pycparser', 'waitress',
-                         'webauthn', 'cbor2', 'cryptography', 'pyOpenSSL', 'pyasn1', 'pyasn1-modules',
-                         'typing-extensions']:
+            runtime = ['Flask', 'Werkzeug', 'Jinja2', 'MarkupSafe', 'itsdangerous', 'click',
+                       'blinker', 'argon2-cffi', 'argon2-cffi-bindings', 'cffi', 'pycparser', 'waitress',
+                       'webauthn', 'cbor2', 'cryptography', 'pyOpenSSL', 'pyasn1', 'pyasn1-modules']
+            if sys.version_info < (3, 13):  # pyOpenSSL's dependency marker
+                runtime.append('typing-extensions')
+            for name in runtime:
                 dist = importlib.metadata.distribution(name)
                 for entry in dist.files:
                     if '..' in entry.parts:
