@@ -113,12 +113,33 @@ def test_passkey_cryptographic_lifecycle(tmp_path):
         assert rpc(b, 'auth_info')['passkey_available']
         with pytest.raises(AccessError):
             rpc(b, 'login', password='test-only long password string')
+        options = rpc(b, 'passkey_login_start', binding=BINDING)
+        for i in range(40):
+            rpc(b, 'passkey_login_start', binding=f'{i:043d}:')
+        for i in range(40):
+            other = f'{i:043d}:'
+            rpc(b, 'passkey_login_start', binding=other)
+            with pytest.raises(AccessError):
+                rpc(b, 'passkey_login_finish', binding=other, credential={})
+        valid = key.credential(options)
+        with pytest.raises(AccessError):
+            rpc(b, 'passkey_login_finish', binding='z'*43+':', credential=valid)
+        assert rpc(b, 'passkey_login_finish', binding=BINDING, credential=valid)['max_age'] == 1800
+        with pytest.raises(AccessError):
+            rpc(b, 'passkey_login_finish', binding=BINDING, credential=valid)
+        passkeys = b.passkeys
+        assert passkeys is not None
+        clock = passkeys.clock
+        passkeys.clock = lambda: 100.0
+        expired = rpc(b, 'passkey_login_start', binding=BINDING)
+        passkeys.clock = lambda: 160.0
+        with pytest.raises(AccessError):
+            rpc(b, 'passkey_login_finish', binding=BINDING, credential=key.credential(expired))
+        passkeys.clock = clock
         for invalid in ({'origin':'https://other.example'}, {'uv':False}):
             options = rpc(b, 'passkey_login_start', binding=BINDING)
             with pytest.raises(AccessError):
                 rpc(b, 'passkey_login_finish', binding=BINDING, credential=key.credential(options, **invalid))
-            with pytest.raises(AccessError):
-                rpc(b, 'passkey_login_finish', binding=BINDING, credential=key.credential(options))
         options = rpc(b, 'passkey_login_start', binding=BINDING)
         login = rpc(b, 'passkey_login_finish', binding=BINDING, credential=key.credential(options))
         assert login['max_age'] == 1800

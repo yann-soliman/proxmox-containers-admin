@@ -1,12 +1,12 @@
 """Broker-owned WebAuthn credentials; callers serialize all methods under the broker lock."""
 import hashlib
+import hmac
 import json
 import os
 import re
 import secrets
 import tempfile
 import time
-from collections import deque
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -27,6 +27,8 @@ TICKET = 'passkey-enrollment.json'
 UV = UserVerificationRequirement.REQUIRED
 BINDING = re.compile(r'[A-Za-z0-9_-]{43}:(?:[0-9a-f]{32})?')
 MAX_KEYS = 8
+CHALLENGE_TTL_MS = 60_000
+LOGIN_REPLAY_LIMIT = 256
 
 
 def sync_directory(path):
@@ -75,7 +77,9 @@ class Passkeys:
         self.ticket = Path(config.state_dir) / TICKET
         self.origin, self.rp_id = config.origin, urlsplit(config.origin).hostname
         self.clock, self.owner = clock, owner
-        self.challenges, self.attempts = {}, deque()
+        self.challenges = {}
+        self.login_challenge_key = secrets.token_bytes(32)
+        self.used_logins = {}
         self.failed_storage = False
         self.user_id, self.keys = secrets.token_bytes(32), {}
         if self.store.exists() or self.store.is_symlink():
@@ -113,7 +117,6 @@ class Passkeys:
         now = self.clock()
         self.challenges = {k: v for k, v in self.challenges.items() if v[1] > now}
         key = (purpose, binding)
-        # Anonymous logins must not deplete the enrollment or FULL approval slots.
         if key not in self.challenges and sum(k[0] == purpose for k in self.challenges) >= 32:
             raise AccessError('challenge quota reached')
         challenge = secrets.token_bytes(32)
@@ -127,37 +130,66 @@ class Passkeys:
             raise AccessError('passkey challenge expired or mismatched')
         return item[0]
 
-    def rate_limit(self):
-        now = self.clock()
-        while self.attempts and self.attempts[0] <= now - 60:
-            self.attempts.popleft()
-        if len(self.attempts) >= 12:
-            raise AccessError('passkey attempts temporarily rate limited')
-        self.attempts.append(now)
+    def login_tag(self, binding, payload):
+        return hmac.digest(self.login_challenge_key, binding.encode('ascii') + b'\0' + payload, 'sha256')
+
+    def login_challenge(self, binding):
+        # An anonymous start consumes no stored slot. The broker alone can mint
+        # an expiring challenge for the web service's signed browser binding.
+        issued = int(self.clock() * 1000).to_bytes(8, 'big')
+        payload = issued + secrets.token_bytes(16)
+        return payload + self.login_tag(binding, payload)
+
+    def login_expiry(self, binding, challenge):
+        if len(challenge) != 56:
+            raise ValueError('invalid login challenge')
+        payload, tag = challenge[:24], challenge[24:]
+        issued = int.from_bytes(payload[:8], 'big')
+        expires = issued + CHALLENGE_TTL_MS
+        if (not issued <= int(self.clock() * 1000) < expires or challenge in self.used_logins
+                or not hmac.compare_digest(self.login_tag(binding, payload), tag)):
+            raise ValueError('login challenge stale or mismatched')
+        return expires
+
+    def remember_login(self, challenge, expires):
+        # Only a successful cryptographic assertion can occupy the replay cache.
+        now = int(self.clock() * 1000)
+        self.used_logins = {k: deadline for k, deadline in self.used_logins.items() if deadline > now}
+        if len(self.used_logins) >= LOGIN_REPLAY_LIMIT:
+            raise AccessError('authenticated login quota reached')
+        if expires <= now:
+            raise AccessError('login challenge expired')
+        self.used_logins[challenge] = expires
 
     def auth_options(self, purpose, binding):
+        self.check_available()
         if not self.keys:
             raise AccessError('no passkey enrolled')
-        challenge = self.start(purpose, binding)
+        challenge = self.login_challenge(binding) if purpose == 'login' else self.start(purpose, binding)
         return json.loads(options_to_json(generate_authentication_options(
             rp_id=self.rp_id, challenge=challenge, user_verification=UV)))
 
     def verify(self, purpose, binding, credential):
-        challenge = self.take(purpose, binding)
-        if purpose == 'login':
-            self.rate_limit()
+        self.check_available()
+        challenge = self.take(purpose, binding) if purpose != 'login' else None
+        login_expiry = None
         try:
             parsed = parse_authentication_credential_json(credential)
             item = self.keys[b64(parsed.raw_id)]
-            if (parsed.response.user_handle != self.user_id or
-                    parse_client_data_json(parsed.response.client_data_json).cross_origin):
+            client_data = parse_client_data_json(parsed.response.client_data_json)
+            if parsed.response.user_handle != self.user_id or client_data.cross_origin:
                 raise ValueError('foreign credential')
+            if purpose == 'login':
+                challenge = client_data.challenge
+                login_expiry = self.login_expiry(binding, challenge)
             verified = verify_authentication_response(
                 credential=parsed, expected_challenge=challenge, expected_rp_id=self.rp_id,
                 expected_origin=self.origin, credential_public_key=unb64(item['public']),
                 credential_current_sign_count=item['count'], require_user_verification=True)
         except (WebAuthnException, KeyError, ValueError, TypeError, RecursionError) as exc:
             raise AccessError('passkey verification failed') from exc
+        if login_expiry is not None:
+            self.remember_login(challenge, login_expiry)
         if verified.new_sign_count != item['count']:
             self.save({**self.keys, b64(parsed.raw_id): {**item, 'count': verified.new_sign_count}})
 

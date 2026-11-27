@@ -62,9 +62,13 @@
       if (onSuccess) onSuccess(outcome);
       else window.location.assign(outcome.location);
     } catch (error) {
-      status.textContent = error.name === 'NotAllowedError'
-        ? 'Clé d’accès annulée ou indisponible. Vérifiez que votre coffre est déverrouillé.'
-        : 'Action non confirmée. Actualisez la page avant de réessayer.';
+      if (create) {
+        status.textContent = 'Inscription non terminée. Déverrouillez votre coffre et générez un nouveau code dans la console PVE.';
+      } else {
+        status.textContent = error.name === 'NotAllowedError'
+          ? 'Clé d’accès annulée ou indisponible. Vérifiez que votre coffre est déverrouillé.'
+          : 'Action non confirmée. Actualisez la page avant de réessayer.';
+      }
     } finally {
       busy = false;
       control.disabled = false;

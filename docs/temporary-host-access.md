@@ -63,6 +63,10 @@ Password sessions in migration retain the old 15-minute behavior. `passkey` mode
 disables password login on the website. The browser still requires an explicit
 decision; login, enrollment, or opening a notification never grants a lease.
 
+Login challenges expire after 60 seconds and are authenticated by the broker,
+bound to the browser and destination. Unauthenticated starts and failed proofs
+do not occupy the replay cache; a valid assertion can grant a session only once.
+
 Keep the existing HTTPS hostname stable. The broker verifies the exact origin,
 RP ID and user verification and stores public credentials, not private keys. For
 Vaultwarden, choose the Bitwarden extension/app as your passkey provider, then
