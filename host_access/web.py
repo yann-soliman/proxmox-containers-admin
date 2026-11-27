@@ -1,11 +1,12 @@
-"""Mobile password UI. Unix broker remains the authentication authority."""
+"""Mobile operator UI. Unix broker remains the authentication authority."""
+import json
 import os
 import re
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
-from flask import Flask, abort, make_response, redirect, render_template, request, session
+from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, session
 from werkzeug.exceptions import HTTPException
 from .broker import rpc
 from .config import load
@@ -13,6 +14,7 @@ from .leases import AccessError
 
 ID = re.compile(r'^[0-9a-f]{32}$')
 STATES = {'pending': 'En attente', 'active': 'Actif', 'denied': 'Refusé', 'expired': 'Expiré', 'revoked': 'Révoqué'}
+SESSION_COOKIE = dict(secure=True, httponly=True, samesite='Lax', path='/')
 
 
 def minutes(seconds):
@@ -62,10 +64,35 @@ def create_app(config, *, transport=None):
     def login_page(rid='', stale=False):
         session.clear()
         session['csrf'] = secrets.token_urlsafe(32)
-        response = make_response(render_template('login.html', csrf=session['csrf'], rid=rid, stale=stale))
+        info = dict(auth_mode='password', passkey_available=False)
+        if passkeys_enabled():
+            info = broker('auth_info')
+            session['binding'] = secrets.token_urlsafe(32)
+        response = make_response(render_template('login.html', csrf=session['csrf'], rid=rid, stale=stale, **info))
         if stale:
-            response.delete_cookie('pha_session', secure=True, httponly=True, samesite='Strict', path='/')
+            response.delete_cookie('pha_session', **SESSION_COOKIE)
         return response
+
+    def passkeys_enabled():
+        return getattr(config, 'auth_mode', 'password') in {'migration', 'passkey'}
+
+    def destination(rid):
+        return '/request/'+rid if rid else '/'
+
+    def signed_in(response, result):
+        response.set_cookie('pha_session', result['token'], max_age=result.get('max_age', 900),
+                            **SESSION_COOKIE)
+        session.clear()
+        return response
+
+    def credential():
+        try:
+            data = json.loads(request.form.get('credential', ''))
+        except (ValueError, RecursionError):
+            abort(400)
+        if not isinstance(data, dict):
+            abort(400)
+        return data
 
     @app.before_request
     def guard():
@@ -84,7 +111,7 @@ def create_app(config, *, transport=None):
     @app.after_request
     def headers(response):
         response.headers.update({'Cache-Control':'no-store', 'Pragma':'no-cache',
-            'Content-Security-Policy':"default-src 'none'; style-src 'self'; script-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+            'Content-Security-Policy':"default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
             'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'same-origin',
             'Strict-Transport-Security':'max-age=31536000', 'X-Frame-Options':'DENY'})
         return response
@@ -124,18 +151,56 @@ def create_app(config, *, transport=None):
                     broker('session', token=token())
                 except AccessError:
                     return login_page(rid, stale=True)
-                return redirect('/request/'+rid if rid else '/', code=303)
+                return redirect(destination(rid), code=303)
             return login_page(rid)
+        if getattr(config, 'auth_mode', 'password') == 'passkey':
+            abort(403)
         csrf = request.form.get('csrf', '')
         expected = session.pop('csrf', '')
         if not expected or not secrets.compare_digest(csrf, expected):
             abort(403)
         result = broker('login', password=request.form.get('password', ''))
-        response = redirect('/request/'+rid if rid else '/', code=303)
-        response.set_cookie('pha_session', result['token'], max_age=900, secure=True,
-                            httponly=True, samesite='Strict', path='/')
-        session.clear()
-        return response
+        return signed_in(redirect(destination(rid), code=303), result)
+
+    @app.post('/passkeys/login/<phase>')
+    def passkey_login(phase):
+        if phase not in {'start', 'finish'} or not passkeys_enabled():
+            abort(404)
+        csrf, binding = session.get('csrf', ''), session.get('binding', '')
+        if not csrf or not binding or not secrets.compare_digest(csrf, request.form.get('csrf', '')):
+            abort(403)
+        rid = request.form.get('request', '')
+        if rid and not ID.fullmatch(rid):
+            abort(400)
+        # Include the safe post-login destination in the browser binding.
+        binding += ':' + rid
+        if phase == 'start':
+            return jsonify(broker('passkey_login_start', binding=binding))
+        result = broker('passkey_login_finish', binding=binding, credential=credential())
+        return signed_in(jsonify(location=destination(rid)), result)
+
+    @app.get('/passkeys/enroll')
+    def enrollment():
+        if not passkeys_enabled():
+            abort(404)
+        if not token():
+            return redirect('/login', code=303)
+        try:
+            result = broker('session', token=token())
+        except AccessError:
+            return redirect('/login', code=303)
+        return render_template('enroll.html', csrf=result['csrf'])
+
+    @app.post('/passkeys/enroll/<phase>')
+    def passkey_enroll(phase):
+        if phase not in {'start', 'finish'} or not passkeys_enabled():
+            abort(404)
+        m = dict(token=token(), csrf=request.form.get('csrf', ''))
+        if phase == 'start':
+            m['code'] = request.form.get('code', '')
+        else:
+            m['credential'] = credential()
+        return jsonify(broker('passkey_enroll_'+phase, **m))
 
     @app.get('/request/<rid>')
     def view(rid):
@@ -148,7 +213,14 @@ def create_app(config, *, transport=None):
         except AccessError:
             return login_page(rid, stale=True)
         return render_template('approval.html', r=result['request'], csrf=result['csrf'],
-                               challenge=result['challenge'])
+                               challenge=result['challenge'], step_up=result.get('step_up', False))
+
+    @app.post('/request/<rid>/approve/start')
+    def passkey_approve_start(rid):
+        if not ID.fullmatch(rid) or not passkeys_enabled():
+            abort(404)
+        return jsonify(broker('passkey_approve_start', token=token(), id=rid,
+                              csrf=request.form.get('csrf', ''), challenge=request.form.get('challenge', '')))
 
     @app.post('/request/<rid>/<decision>')
     def decide(rid, decision):
@@ -157,14 +229,18 @@ def create_app(config, *, transport=None):
         m = dict(token=token(), csrf=request.form.get('csrf', ''), id=rid)
         if decision == 'approve':
             m.update(challenge=request.form.get('challenge', ''))
+            if 'credential' in request.form and passkeys_enabled():
+                m['credential'] = credential()
         broker(decision, **m)
+        if 'credential' in m:
+            return jsonify(location='/request/'+rid)
         return redirect('/request/'+rid, code=303)
 
     @app.post('/logout')
     def logout():
         broker('logout', token=token(), csrf=request.form.get('csrf', ''))
         response = redirect('/login', code=303)
-        response.delete_cookie('pha_session', secure=True, httponly=True, samesite='Strict')
+        response.delete_cookie('pha_session', **SESSION_COOKIE)
         session.clear()
         return response
 

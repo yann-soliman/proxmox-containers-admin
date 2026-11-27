@@ -8,6 +8,8 @@ target = "pve-node"
 state_dir = "/var/lib/proxmox-host-access"
 socket_dir = "/run/proxmox-host-access"
 password_file = "/etc/proxmox-host-access/password.hash"
+# password (default), migration (enroll/test), or passkey (no web password fallback).
+auth_mode = "password"
 default_duration = 900
 maximum_duration = 1800
 pending_ttl = 300

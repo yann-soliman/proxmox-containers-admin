@@ -45,11 +45,58 @@ six-attempt-per-minute budget (including successful attempts), expiring
 automatically rather than permanently locking out. A stolen active operator
 session can authorize requests: protect the browser and log out when finished.
 
-The UI uses same-origin POST, CSRF, Secure/HttpOnly/SameSite=Strict cookies, no-store,
-CSP, HSTS, escaping and exact configured Host/HTTPS origin. GET never grants or
-revokes host access. It can create a presentation nonce, not an authorization.
-No signup/reset/registration endpoint exists. Login redirects accept only a
-validated request ID; arbitrary `next` URLs are ignored.
+The UI uses same-origin POST, CSRF, Secure/HttpOnly cookies, no-store, CSP, HSTS,
+escaping and exact configured Host/HTTPS origin. The authenticated cookie uses
+`SameSite=Lax` so a top-level link from Gotify can reuse a valid session; the
+pre-login cookie remains strict. GET never grants or revokes host access. It can
+create a presentation nonce, not an authorization. No public signup or password
+reset exists. Login redirects accept only a validated request ID; arbitrary
+`next` URLs are ignored.
+
+### Passkeys (optional)
+
+The default `password` mode preserves existing installs. Use `migration` only
+during enrollment/verification: both methods work then. Passkey sessions have a
+30-minute absolute lifetime (no sliding renewal). In those sessions SAFE still
+takes one click; FULL needs a fresh passkey assertion tied to that exact request.
+Password sessions in migration retain the old 15-minute behavior. `passkey` mode
+disables password login on the website. The browser still requires an explicit
+decision; login, enrollment, or opening a notification never grants a lease.
+
+Keep the existing HTTPS hostname stable. The broker verifies the exact origin,
+RP ID and user verification and stores public credentials, not private keys. For
+Vaultwarden, choose the Bitwarden extension/app as your passkey provider, then
+test a clean login in the browser you actually use when opening Gotify links.
+The Bitwarden Android provider requires Android 14+ for passkeys; an older
+Android browser or an in-app browser is not validated by a desktop test. Open the
+link in a compatible external browser if needed. See [Bitwarden's passkey guide](https://bitwarden.com/help/storing-passkeys/).
+
+1. Verify independent access to the PVE console and retain a root-only backup
+   of the old configuration/runtime. Set `auth_mode = "migration"` and restart
+   the broker and web services outside any maintenance lease. Restarting the
+   broker closes its browser sessions and active leases.
+2. Log in with the current operator password, then run in the PVE console:
+   `sudo /opt/proxmox-host-access/venv/bin/python -I -m host_access.operator enroll-passkey`.
+   Open `/passkeys/enroll` in the same authenticated browser. Enter the console
+   code there within five minutes, never in a message or URL. The code is consumed
+   when enrollment begins; if you cancel, issue a fresh one. Repeat with an
+   independent backup authenticator (not just a second device synced to the same vault).
+3. Test both credentials from fresh browser profiles. Check the Gotify link in
+   the same browser while authenticated, and confirm a benign SAFE request.
+   Then set `auth_mode = "passkey"`, restart broker + web and retest. The
+   original password hash remains available for console-controlled recovery.
+4. If all authenticators are lost, switch back to `migration` from the PVE console
+   and restart both services. If a key might be compromised, stop both services
+   and move `passkeys.json` and any `passkey-enrollment.json` from the configured
+   state directory to a private root-only backup before restarting in migration.
+   That resets **all** WebAuthn credentials; re-enroll both and switch back only
+   after validation. There is no public recovery route.
+
+A passkey resists a fake hostname; it is not protection against a compromised
+TLS reverse proxy serving the real hostname, a compromised operator browser or
+an agent with unrestricted host root. A stolen authenticated session can still
+approve SAFE, and in migration a stolen password session has legacy rights.
+Neither the passkey session lifetime nor reauthentication extends a host lease.
 
 ## Installation (operator on the destination PVE; not run by an agent)
 
@@ -267,7 +314,7 @@ active in the file: startup invalidates it and monotonic deadlines are memory-on
 - Password bootstrap stops both services; restart explicitly after change.
 - Agent authority uses SSH and trusted numeric sudo identity, not the human web session.
 - Web requires `web_uid`; broker requires root; sockets use `SO_PEERCRED`.
-- CSRF, exact `Origin`, `Secure/HttpOnly/SameSite=Strict`, `no-store`, CSP/HSTS enforced; `GET` never grants/revokes.
+- CSRF, exact `Origin`, `Secure/HttpOnly`, `no-store`, CSP/HSTS enforced; `GET` never grants/revokes.
 
 `sudo bash scripts/uninstall-host-access.sh` stops/disables authority services,
 cleans tracked transient units and removes installed extension files/venv. It

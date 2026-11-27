@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Ajouter une clé d’accès{% endblock %}
+{% block content %}
+<section class="panel" aria-labelledby="enroll-title">
+  <h1 id="enroll-title">Ajouter une clé d’accès</h1>
+  <p>Saisissez le code à usage unique affiché dans la console PVE.</p>
+  <form data-passkey-enroll method="post" action="/passkeys/enroll/start">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="code">Code d’inscription</label>
+    <input id="code" type="password" name="code" required autocomplete="off" maxlength="128">
+    <button type="submit" class="button primary wide">Ajouter la clé</button>
+  </form>
+  <p id="passkey-status" role="status" aria-live="polite"></p>
+  <a class="text-link" href="/">Retour à la console</a>
+</section>
+<script src="{{ url_for('static', filename='passkey.js') }}" defer></script>
+{% endblock %}

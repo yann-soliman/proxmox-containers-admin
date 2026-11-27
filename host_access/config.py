@@ -53,6 +53,7 @@ class Config:
     bind: str = '127.0.0.1'
     trusted_proxy: str = '127.0.0.1'
     port: int = 8787
+    auth_mode: str = 'password'
 
     def __post_init__(self):
         import ipaddress
@@ -60,6 +61,8 @@ class Config:
         ipaddress.ip_address(self.trusted_proxy)
         if type(self.enable_script) is not bool or type(self.audit_enabled) is not bool:
             raise ValueError('enable_script and audit_enabled must be booleans')
+        if not isinstance(self.auth_mode, str) or self.auth_mode not in {'password', 'migration', 'passkey'}:
+            raise ValueError('invalid auth_mode')
         for path in (self.state_dir, self.socket_dir, self.password_file):
             if not Path(path).is_absolute() or '..' in Path(path).parts:
                 raise ValueError('authority paths must be absolute')

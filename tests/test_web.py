@@ -22,7 +22,8 @@ def test_web_password_csrf_origin_host_replay_and_readback(running):
                            headers={'Origin':base}, data={'password':pw, 'csrf':csrf})
     assert response.status_code == 303
     cookies = response.headers.getlist('Set-Cookie')
-    assert any('Secure' in s and 'HttpOnly' in s and 'SameSite=Strict' in s for s in cookies)
+    auth_cookie = next(s for s in cookies if s.startswith('pha_session='))
+    assert all(flag in auth_cookie for flag in ('Secure', 'HttpOnly', 'SameSite=Lax'))
     page = client.get('/request/'+r['id'], base_url=base)
     assert '&lt;script&gt;' in page.text and 'FULL' in page.text
     assert call(b, 'agent', 'status', id=r['id'])['state'] == 'pending'

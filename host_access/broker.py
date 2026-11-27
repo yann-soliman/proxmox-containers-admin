@@ -150,6 +150,10 @@ class Broker:
             self.leases = Leases(state, agent=config.agent, target=config.target,
                                  maximum=config.maximum_duration, pending_ttl=config.pending_ttl)
             self.auth = Auth(config.password_file)
+            self.passkeys = None
+            if config.auth_mode != 'password':
+                from .passkeys import Passkeys
+                self.passkeys = Passkeys(config, owner=owner)
         except Exception:
             os.close(self.lock_fd)
             self.lock_fd = None
@@ -282,7 +286,12 @@ class Broker:
             'agent': {'request': {'mode', 'duration', 'reason'}, 'status': {'id'}, 'revoke': {'id'},
                       'safe': {'action', 'params'}, 'execute': {'command', 'stdin'}, 'script': {'stdin'}},
             'web': {'login': {'password'}, 'session': {'token'}, 'overview': {'token'}, 'view': {'token', 'id'},
-                    'approve': {'token', 'csrf', 'id', 'challenge', 'password'},
+                    'auth_info': set(), 'passkey_login_start': {'binding'},
+                    'passkey_login_finish': {'binding', 'credential'},
+                    'passkey_enroll_start': {'token', 'csrf', 'code'},
+                    'passkey_enroll_finish': {'token', 'csrf', 'credential'},
+                    'passkey_approve_start': {'token', 'csrf', 'id', 'challenge'},
+                    'approve': {'token', 'csrf', 'id', 'challenge', 'password', 'credential'},
                     'deny': {'token', 'csrf', 'id'}, 'revoke': {'token', 'csrf', 'id'}, 'logout': {'token', 'csrf'}}}
         op = m.get('op')
         if role not in schemas or not isinstance(op, str) or op not in schemas[role] or set(m) - schemas[role][op] - {'op'}:
@@ -291,9 +300,27 @@ class Broker:
             if self.stopped.is_set():
                 raise AccessError('broker unavailable')
             if role == 'web':
+                if op == 'auth_info':
+                    return dict(auth_mode=self.config.auth_mode,
+                                passkey_available=bool(self.passkeys and self.passkeys.keys and not self.passkeys.failed_storage))
+                if op.startswith('passkey_') and self.passkeys is None:
+                    raise AccessError('passkeys not enabled')
                 if op == 'login':
+                    if self.config.auth_mode == 'passkey':
+                        raise AccessError('password login disabled')
                     token, csrf = self.auth.login(m.get('password'))
                     return dict(token=token, csrf=csrf)
+                if op in {'passkey_login_start', 'passkey_login_finish'}:
+                    from .auth import PASSKEY_SESSION_TTL
+                    from .passkeys import BINDING
+                    binding = m.get('binding')
+                    if not isinstance(binding, str) or not BINDING.fullmatch(binding):
+                        raise AccessError('invalid browser binding')
+                    if op == 'passkey_login_start':
+                        return self.passkeys.auth_options('login', binding)
+                    self.passkeys.verify('login', binding, m.get('credential'))
+                    token, csrf = self.auth.new_session(passkey=True)
+                    return dict(token=token, csrf=csrf, max_age=PASSKEY_SESSION_TTL)
                 token = m.get('token')
                 session = self.auth.session(token)
                 if op == 'session':
@@ -307,13 +334,30 @@ class Broker:
                     self.auth.check_csrf(token, m.get('csrf'))
                     del self.auth.sessions[token]
                     return {}
+                if op in {'passkey_enroll_start', 'passkey_enroll_finish'}:
+                    self.auth.check_csrf(token, m.get('csrf'))
+                    if op == 'passkey_enroll_start':
+                        return self.passkeys.enroll_start(token, m.get('code'))
+                    self.passkeys.enroll_finish(token, m.get('credential'))
+                    return {}
                 rid = m.get('id')
                 record = self.leases.get(rid)
+                step_up = session['passkey'] and record['mode'] == 'full' and record['state'] == 'pending'
                 if op == 'view':
-                    return dict(request=record, csrf=session['csrf'], challenge=self.auth.challenge(token, rid))
+                    page = dict(request=record, csrf=session['csrf'], challenge=self.auth.challenge(token, rid))
+                    if step_up:
+                        page['step_up'] = True
+                    return page
                 self.auth.check_csrf(token, m.get('csrf'))
+                if op == 'passkey_approve_start':
+                    if not step_up:
+                        raise AccessError('fresh assertion not applicable')
+                    self.auth.confirm(token, m.get('csrf'), m.get('challenge'), rid, consume=False)
+                    return self.passkeys.auth_options('approve', (token, rid, m['challenge']))
                 if op == 'approve':
                     self.auth.confirm(token, m.get('csrf'), m.get('challenge'), rid, m.get('password'))
+                    if step_up:
+                        self.passkeys.verify('approve', (token, rid, m['challenge']), m.get('credential'))
                     result = self.leases.decide(rid, 'approve')
                 elif op == 'deny':
                     result = self.leases.decide(rid, 'deny')
