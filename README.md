@@ -55,6 +55,15 @@ Suivi des tâches Proxmox (UPID) :
 - [Suivi de tâches et attente via `scripts/proxmox-task-wait.py`](scripts/proxmox-task-wait.py)
 - [Procédure et codes de sortie du suivi de tâches](docs/task-tracking.md) — attente bornée, sans relance automatique
 
+## Extension optionnelle : maintenance hebdomadaire des LXC
+
+Le [guide de maintenance](docs/lxc-weekly-maintenance.md) décrit un script local
+indépendant du wrapper et d’Hermes, avec inventaire à blanc, rapports séparés
+paquets/applications et notifications Gotify facultatives. Aucun cron n’est
+installé automatiquement et un LXC arrêté n’est jamais démarré par le script.
+
+Ce dépôt est distribué sous [licence MIT](LICENSE).
+
 Vérifications locales (pas de production) :
 
 ```bash
