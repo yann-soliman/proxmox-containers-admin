@@ -27,7 +27,12 @@ free=$(df -Pk / | awk 'END{print $(NF-2)}')
 case "$ID" in
   debian|ubuntu|devuan)
     apt() { apt-get -o DPkg::Lock::Timeout=15 -o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 "$@"; }
-    apt -o APT::Update::Error-Mode=any update
+    refresh_rc=0
+    refresh=$(apt -o APT::Update::Error-Mode=any update 2>&1) || refresh_rc=$?
+    printf '%s\n' "$refresh"
+    [ "$refresh_rc" -eq 0 ] || exit "$refresh_rc"
+    # Older APT can report a partial refresh as success.
+    if printf '%s\n' "$refresh" | grep -Eq '^(W:|E:|Err:)'; then exit 27; fi
     [ -z "$(dpkg --audit)" ] || { echo PVE_SYSTEM_DPKG_AUDIT; exit 22; }
     plan=$(apt -s --no-remove upgrade)
     printf '%s\n' "$plan"
@@ -71,17 +76,22 @@ p=$(command -v update)
 grep -Fxq 'export SCRIPT_SLUG="grafana"' "$p"
 grep -Fxq 'export UPDATE_SCRIPT_NAME="grafana"' "$p"
 health() {
- h=$(curl -kfsS --max-time 8 https://127.0.0.1:3000/api/health)
+ # TLS verification is bypassed only for this fixed, credential-free loopback probe.
+ case "$1" in
+   http) h=$(curl -q --noproxy '*' -fsS --max-time 8 http://127.0.0.1:3000/api/health) || return 1;;
+   https) h=$(curl -q --noproxy '*' -kfsS --max-time 8 https://127.0.0.1:3000/api/health) || return 1;;
+   *) return 1;;
+ esac
  printf '%s\n' "$h" | grep -Eq '"database"[[:space:]]*:[[:space:]]*"ok"'
 }
-health
+health "$1" || { echo PVE_APP_HEALTH_PRECHECK_FAILED; exit 28; }
 before=$(apk info -v | sort)
 conf=$(sha256sum /etc/conf.d/grafana)
 # Call the installed launcher; never supply menu input or enable bypass flags.
 "$p" </dev/null
 [ "$conf" = "$(sha256sum /etc/conf.d/grafana)" ]
 rc-service grafana status
-health
+health "$1" || { echo PVE_APP_HEALTH_POSTCHECK_FAILED; exit 29; }
 if [ "$before" = "$(apk info -v | sort)" ]; then echo PVE_APP_PACKAGE_CHANGED 0; else echo PVE_APP_PACKAGE_CHANGED 1; fi
 """
 
@@ -93,7 +103,7 @@ BLOCK = re.compile(
 PROBLEM = {"failed", "needs_attention", "timeout"}
 
 
-def command(args, seconds):
+def command(args, seconds=None):
     try:
         r = subprocess.run(
             args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=seconds
@@ -108,12 +118,51 @@ def read_config(path):
     if path.is_symlink() or not stat.S_ISREG(s.st_mode) or s.st_mode & 0o077 or s.st_uid != os.geteuid():
         raise ValueError("configuration must be owner-only and not a symlink")
     c = json.loads(path.read_text())
-    if any(not isinstance(x, int) or x < 100 for x in c.get("exclude", [])):
+    if not isinstance(c, dict):
+        raise ValueError("configuration must be a JSON object")
+    excluded = c.get("exclude", [])
+    if not isinstance(excluded, list) or any(type(x) is not int or not 100 <= x <= 999999999 for x in excluded):
         raise ValueError("invalid exclusions")
     apps = c.get("apps", {})
+    if not isinstance(apps, dict):
+        raise ValueError("apps must be an object keyed by VMID")
     for i, p in apps.items():
-        if not i.isdecimal() or not re.fullmatch(r"[a-zA-Z0-9_.-]+", p["name"]) or p["slug"] != "grafana":
-            raise ValueError("unknown application profile")
+        if (
+            not re.fullmatch(r"[1-9][0-9]{2,8}", i)
+            or not isinstance(p, dict)
+            or not isinstance(p.get("name"), str)
+            or not re.fullmatch(r"[a-zA-Z0-9_.-]+", p["name"])
+            or p.get("slug") != "grafana"
+            or p.get("health_scheme", "http") not in ("http", "https")
+        ):
+            raise ValueError(
+                "invalid application profile: expected VMID, name, grafana slug and optional health_scheme"
+            )
+    state = c.get("state_dir", "/var/log/pve-lxc-weekly")
+    if not isinstance(state, str) or not Path(state).is_absolute() or ".." in Path(state).parts:
+        raise ValueError("state_dir must be an absolute path without parent traversal")
+    if "patchmon_report" in c and not isinstance(c["patchmon_report"], bool):
+        raise ValueError("patchmon_report must be a boolean")
+    if "mail_to" in c and (
+        not isinstance(c["mail_to"], str) or not re.fullmatch(r"[\w.+-]+@[\w.-]+", c["mail_to"], re.ASCII)
+    ):
+        raise ValueError("mail_to must be a single email address")
+    if "gotify" in c:
+        gotify = c["gotify"]
+        if not isinstance(gotify, dict) or not isinstance(gotify.get("url"), str):
+            raise ValueError("gotify must contain a URL and an application token")
+        url = urllib.parse.urlsplit(gotify["url"])
+        if (
+            url.scheme != "https"
+            or not url.hostname
+            or url.username is not None
+            or url.query
+            or url.fragment
+            or not url.path.endswith("/message")
+        ):
+            raise ValueError("gotify.url must be an HTTPS /message endpoint without credentials or parameters")
+        if not isinstance(gotify.get("token"), str) or not re.fullmatch(r"[A-Za-z0-9_-]+", gotify["token"]):
+            raise ValueError("invalid Gotify application token format")
     return c
 
 
@@ -146,12 +195,12 @@ def inventory(c, ids):
     return [x for i, x in sorted(found.items()) if not ids or i in ids]
 
 
-def phase(guest, name, run, body):
+def phase(guest, name, run, body, *params):
     i = str(guest["id"])
-    rc, out = command(["pct", "exec", i, "--", "timeout", "420", "sh", "-c", body], 450)
+    # No global deadline: killing the guest command can corrupt a package transaction.
+    rc, out = command(["pct", "exec", i, "--", "sh", "-c", body, "pve-lxc-weekly", *params])
     (run / (i + "-" + name + ".log")).write_text(out)
-    timeout = rc in (124, 137, 143)
-    if timeout:
+    if rc == 124:
         return {"status": "timeout", "exit": rc}
     if name == "system":
         m = re.findall(r"(?m)^PVE_SYSTEM_(APT|APK) (\d+)\s*$", out)
@@ -160,6 +209,12 @@ def phase(guest, name, run, body):
         if not rc and "PVE_SYSTEM_UNSUPPORTED" in out:
             return {"status": "unsupported"}
         return {"status": "failed", "exit": rc}
+    for marker, reason in (
+        ("PVE_APP_HEALTH_PRECHECK_FAILED", "grafana pre-update health check failed"),
+        ("PVE_APP_HEALTH_POSTCHECK_FAILED", "grafana post-update health check failed"),
+    ):
+        if marker in out.splitlines():
+            return {"status": "needs_attention", "exit": rc, "reason": reason}
     if rc:
         return {"status": "needs_attention" if BLOCK.search(out) else "failed", "exit": rc}
     m = re.findall(r"(?m)^PVE_APP_PACKAGE_CHANGED ([01])\s*$", out)
@@ -209,7 +264,7 @@ def run_guest(g, c, phase_arg, run):
         elif recheck(g) != "eligible":
             g["application"] = {"status": "needs_attention", "reason": "guest state changed"}
         else:
-            g["application"] = phase(g, "application", run, GRAFANA)
+            g["application"] = phase(g, "application", run, GRAFANA, profile.get("health_scheme", "http"))
     if (
         system
         and c.get("patchmon_report")
@@ -248,15 +303,7 @@ def notify(c, title, body, warning):
         try:
             g = c["gotify"]
             url = g["url"]
-            parts = urllib.parse.urlsplit(url)
-            if (
-                parts.scheme not in ("http", "https")
-                or not parts.netloc
-                or parts.username
-                or parts.query
-                or parts.fragment
-            ):
-                raise ValueError("invalid Gotify endpoint")
+
             data = json.dumps({"title": title, "message": body, "priority": 8 if warning else 4}).encode()
             rq = urllib.request.Request(
                 url, data=data, headers={"Content-Type": "application/json", "X-Gotify-Key": g["token"]}
@@ -316,11 +363,16 @@ def main():
         print(json.dumps({"guests": inventory(c, ids)}, ensure_ascii=False))
         return 0
     state = Path(c.get("state_dir", "/var/log/pve-lxc-weekly"))
+    if state.resolve() != state:
+        raise ValueError("unsafe log directory: symlink in state_dir")
     state.mkdir(parents=True, exist_ok=True)
     if state.is_symlink() or state.stat().st_mode & 0o077 or state.stat().st_uid != os.geteuid():
         raise ValueError("unsafe log directory")
     with (state / "maintenance.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as e:
+            raise RuntimeError("another maintenance run is in progress") from e
         r = {
             "schema": 1,
             "run_id": dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8],

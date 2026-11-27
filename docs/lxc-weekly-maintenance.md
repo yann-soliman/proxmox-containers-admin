@@ -8,7 +8,9 @@ Sur le nœud PVE, en tant que `root`, depuis un checkout de confiance, avec Pyth
 
 ```sh
 install -m 0755 scripts/pve-lxc-weekly.py /usr/local/sbin/pve-lxc-weekly
-install -m 0600 examples/pve-lxc-weekly.example.json /etc/pve-lxc-weekly.json
+if [ ! -e /etc/pve-lxc-weekly.json ] && [ ! -L /etc/pve-lxc-weekly.json ]; then
+    install -m 0600 examples/pve-lxc-weekly.example.json /etc/pve-lxc-weekly.json
+fi
 /usr/local/sbin/pve-lxc-weekly --audit
 ```
 
@@ -24,11 +26,13 @@ Sur un LXC de test en marche, remplacer `200` par son VMID. **Ce n’est pas un 
 /usr/local/sbin/pve-lxc-weekly --only 200 --phase system --no-notify
 ```
 
-Debian, Ubuntu et Devuan utilisent un rafraîchissement strict d’APT suivi d’un `upgrade` **sans suppression de paquet**, avec vérification des versions installées. Alpine utilise APK après simulation. Une distribution non gérée donne un avertissement, sans action. Une maj de paquet peut redémarrer un service via ses propres scripts, même si le programme ne redémarre jamais un LXC. En cas d’interruption, vérifier le système avant de le relancer.
+Debian, Ubuntu et Devuan utilisent un rafraîchissement strict d’APT suivi d’un `upgrade` **sans suppression de paquet**, avec vérification des versions installées. Un avertissement ou une erreur au rafraîchissement bloque l’installation, même sur un ancien APT qui renvoie `0`. Alpine utilise APK après simulation. Une distribution non gérée donne un avertissement, sans action. Une mise à jour de paquet peut redémarrer un service via ses propres scripts, même si le programme ne redémarre jamais un LXC.
+
+Les transactions système et applicatives n’ont pas de délai global qui les tuerait en cours d’installation. Une commande bloquée peut donc retenir le verrou et empêcher le prochain passage. Les opérations qui ont leur propre délai (connexions APT, sondes Grafana, inventaire) le conservent. En cas d’interruption, vérifier l’état du gestionnaire de paquets (par exemple `dpkg --audit`) avant toute relance ; aucune réparation automatique n’est effectuée.
 
 ### Community Scripts : opt-in par LXC
 
-Le premier profil applicatif vérifié est **Grafana natif sur Alpine**. Le LXC doit déjà disposer du lanceur Community Scripts `/usr/bin/update` et d’une API Grafana HTTPS locale sur le port 3000. Le script vérifie le `slug`, le nom du LXC, le lanceur et l’état de l’API avant et après. Le profil ne modifie pas les réglages d’écoute et n’envoie aucune réponse aux menus.
+Le profil applicatif est prévu pour **Grafana natif sur Alpine**. Le LXC doit déjà disposer du lanceur Community Scripts `/usr/bin/update` et répondre sur `http://127.0.0.1:3000/api/health` par défaut. Si Grafana écoute localement en HTTPS, ajouter `"health_scheme": "https"` au profil. La vérification du certificat est désactivée uniquement pour cette sonde sur l’adresse de boucle locale fixe, sans identifiants, proxy ni redirection. Le script vérifie le `slug`, le nom du LXC, le lanceur et l’état de l’API avant et après. Le profil ne modifie pas les réglages d’écoute et n’envoie aucune réponse aux menus.
 
 Exemple de champ `apps` (VMID et nom d’hôte à adapter) :
 
@@ -54,6 +58,17 @@ Le rapport JSON et les journaux détaillés restent dans le répertoire privé `
 
 Le champ `mail_to` est optionnel et nécessite `/usr/sbin/sendmail` fonctionnel. Il envoie un résumé en cas d’avertissement. `patchmon_report` est désactivé par défaut ; s’il est activé, le script appelle l’agent Patchmon existant après une phase système réussie.
 
+### Rétention des rapports
+
+Le programme ne purge pas les rapports. Sur PVE, on peut configurer `systemd-tmpfiles` pour nettoyer les anciens journaux, par exemple avec `/etc/tmpfiles.d/pve-lxc-weekly.conf` (adapter le chemin à `state_dir`) :
+
+```text
+d /var/log/pve-lxc-weekly 0700 root root 90d
+x /var/log/pve-lxc-weekly/maintenance.lock - - - -
+```
+
+Le nettoyage dépend de `systemd-tmpfiles-clean.timer`. L’exclusion du verrou est indispensable pour éviter qu’un second lancement ne crée un nouveau fichier de verrou pendant un run actif.
+
 ### Horaire et retour arrière
 
 Après le pilote et la vérification du rapport, ajouter **manuellement** une ligne à `crontab -e` en tant que `root`, par exemple le lundi à minuit dans le fuseau du nœud :
@@ -63,6 +78,8 @@ Après le pilote et la vérification du rapport, ajouter **manuellement** une li
 ```
 
 Pour arrêter la maintenance, retirer uniquement la ligne ajoutée. Pour désinstaller le script, supprimer ensuite l’exécutable installé après avoir vérifié qu’aucun autre job ne l’utilise. Conserver ou archiver le fichier de configuration et les rapports selon vos besoins. Le programme ne touche pas aux jobs de sauvegarde.
+
+### Codes de sortie
 
 - `0` : opérations prévues réussies ou éléments non concernés ignorés, et pas d’erreur Gotify si configuré.
 - `1` : un prérequis empêche le lancement (configuration, inventaire, verrou de maintenance, etc.).
